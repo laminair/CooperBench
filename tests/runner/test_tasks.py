@@ -1,11 +1,16 @@
 """Unit tests for cooperbench.runner.tasks module."""
 
 import os
+from pathlib import Path
 
 import pytest
 
 from cooperbench.runner import discover_tasks
 from cooperbench.runner.tasks import load_subset
+
+# Dataset directory relative to CooperBench package
+COOPERBENCH_DIR = Path(__file__).parent.parent.parent
+DATASET_DIR = COOPERBENCH_DIR / "dataset"
 
 
 class TestDiscoverTasks:
@@ -13,19 +18,19 @@ class TestDiscoverTasks:
 
     def test_discover_all_tasks(self):
         """Test discovering all tasks returns non-empty list."""
-        tasks = discover_tasks()
+        tasks = discover_tasks(dataset_dir=DATASET_DIR)
         assert len(tasks) > 0
         assert all("repo" in t and "task_id" in t and "features" in t for t in tasks)
 
     def test_discover_by_repo(self):
         """Test filtering tasks by repository name."""
-        tasks = discover_tasks(repo_filter="llama_index_task")
+        tasks = discover_tasks(repo_filter="llama_index_task", dataset_dir=DATASET_DIR)
         assert len(tasks) > 0
         assert all(t["repo"] == "llama_index_task" for t in tasks)
 
     def test_discover_by_task_id(self):
         """Test filtering tasks by specific task ID."""
-        tasks = discover_tasks(repo_filter="llama_index_task", task_filter=17244)
+        tasks = discover_tasks(repo_filter="llama_index_task", task_filter=17244, dataset_dir=DATASET_DIR)
         assert len(tasks) > 0
         assert all(t["task_id"] == 17244 for t in tasks)
 
@@ -35,13 +40,14 @@ class TestDiscoverTasks:
             repo_filter="llama_index_task",
             task_filter=17244,
             features_filter=[1, 2],
+            dataset_dir=DATASET_DIR,
         )
         assert len(tasks) == 1
         assert tasks[0]["features"] == [1, 2]
 
     def test_discover_generates_feature_pairs(self):
         """Test that discovery generates all pairwise feature combinations."""
-        tasks = discover_tasks(repo_filter="llama_index_task", task_filter=17244)
+        tasks = discover_tasks(repo_filter="llama_index_task", task_filter=17244, dataset_dir=DATASET_DIR)
         # Should have nC2 pairs for tasks with >2 features
         features_found = set()
         for t in tasks:
@@ -51,12 +57,12 @@ class TestDiscoverTasks:
 
     def test_discover_nonexistent_repo(self):
         """Test that nonexistent repository returns empty list."""
-        tasks = discover_tasks(repo_filter="nonexistent_repo_xyz")
+        tasks = discover_tasks(repo_filter="nonexistent_repo_xyz", dataset_dir=DATASET_DIR)
         assert tasks == []
 
     def test_discover_nonexistent_task_id(self):
         """Test that nonexistent task ID returns empty list."""
-        tasks = discover_tasks(repo_filter="llama_index_task", task_filter=99999999)
+        tasks = discover_tasks(repo_filter="llama_index_task", task_filter=99999999, dataset_dir=DATASET_DIR)
         assert tasks == []
 
     def test_discover_invalid_feature_filter(self):
@@ -65,12 +71,13 @@ class TestDiscoverTasks:
             repo_filter="llama_index_task",
             task_filter=17244,
             features_filter=[999, 998],  # Features that don't exist
+            dataset_dir=DATASET_DIR,
         )
         assert tasks == []
 
     def test_task_structure(self):
         """Test that discovered tasks have correct structure."""
-        tasks = discover_tasks(repo_filter="llama_index_task", task_filter=17244)
+        tasks = discover_tasks(repo_filter="llama_index_task", task_filter=17244, dataset_dir=DATASET_DIR)
         assert len(tasks) > 0
 
         task = tasks[0]
@@ -82,7 +89,7 @@ class TestDiscoverTasks:
 
     def test_features_are_sorted(self):
         """Test that feature pairs are in sorted order."""
-        tasks = discover_tasks()
+        tasks = discover_tasks(dataset_dir=DATASET_DIR)
         for task in tasks:
             features = task["features"]
             assert features == sorted(features), f"Features not sorted: {features}"
@@ -93,7 +100,7 @@ class TestLoadSubset:
 
     def test_lite_benchmark_split_is_stable(self):
         """Verify lite benchmark split hasn't changed - this is a frozen evaluation set."""
-        subset = load_subset("lite")
+        subset = load_subset("lite", dataset_dir=DATASET_DIR)
 
         # Check structure
         assert "tasks" in subset, "Subset should have 'tasks' key"
@@ -134,12 +141,12 @@ class TestLoadSubset:
         assert len(subset["pairs"]) == 26, "All 26 tasks should have specific pairs"
 
         # Verify discover_tasks generates expected 100 pairs
-        discovered = discover_tasks(subset="lite")
+        discovered = discover_tasks(subset="lite", dataset_dir=DATASET_DIR)
         assert len(discovered) == 100, "Lite subset should generate exactly 100 feature pairs"
 
     def test_flash_benchmark_split_is_stable(self):
         """Verify flash benchmark split hasn't changed - this is a frozen evaluation set."""
-        subset = load_subset("flash")
+        subset = load_subset("flash", dataset_dir=DATASET_DIR)
 
         # Check structure
         assert "tasks" in subset, "Subset should have 'tasks' key"
@@ -150,16 +157,16 @@ class TestLoadSubset:
         assert len(subset["pairs"]) == 20, "All 20 tasks should have specific pairs"
 
         # Verify discover_tasks generates expected 50 pairs
-        discovered = discover_tasks(subset="flash")
+        discovered = discover_tasks(subset="flash", dataset_dir=DATASET_DIR)
         assert len(discovered) == 50, "Flash subset should generate exactly 50 feature pairs"
 
         # Flash should be a strict subset of lite
-        lite_subset = load_subset("lite")
+        lite_subset = load_subset("lite", dataset_dir=DATASET_DIR)
         assert subset["tasks"].issubset(lite_subset["tasks"]), "Flash tasks should be subset of lite"
 
     def test_load_subset_returns_dict_with_pairs(self):
         """Test that load_subset returns dict with tasks and pairs."""
-        subset = load_subset("lite")
+        subset = load_subset("lite", dataset_dir=DATASET_DIR)
         assert isinstance(subset, dict)
         assert isinstance(subset["tasks"], set)
         assert isinstance(subset["pairs"], dict)
@@ -175,7 +182,7 @@ class TestLoadSubset:
     def test_load_nonexistent_subset_raises(self):
         """Test that loading nonexistent subset raises ValueError."""
         with pytest.raises(ValueError, match="not found"):
-            load_subset("nonexistent_subset_xyz")
+            load_subset("nonexistent_subset_xyz", dataset_dir=DATASET_DIR)
 
 
 class TestDiscoverTasksWithSubset:
@@ -183,22 +190,22 @@ class TestDiscoverTasksWithSubset:
 
     def test_subset_with_repo_filter(self):
         """Test combining subset with repo filter."""
-        tasks = discover_tasks(subset="lite", repo_filter="pillow_task")
+        tasks = discover_tasks(subset="lite", repo_filter="pillow_task", dataset_dir=DATASET_DIR)
         assert len(tasks) > 0
         assert all(t["repo"] == "pillow_task" for t in tasks)
 
     def test_subset_with_task_filter(self):
         """Test combining subset with task filter."""
-        tasks = discover_tasks(subset="lite", repo_filter="pillow_task", task_filter=25)
+        tasks = discover_tasks(subset="lite", repo_filter="pillow_task", task_filter=25, dataset_dir=DATASET_DIR)
         assert len(tasks) > 0
         assert all(t["task_id"] == 25 for t in tasks)
 
     def test_subset_excludes_non_subset_tasks(self):
         """Test that subset excludes tasks not in subset."""
         # Get all tasks
-        all_tasks = discover_tasks()
+        all_tasks = discover_tasks(dataset_dir=DATASET_DIR)
         # Get lite tasks
-        lite_tasks = discover_tasks(subset="lite")
+        lite_tasks = discover_tasks(subset="lite", dataset_dir=DATASET_DIR)
 
         # Lite should be smaller
         assert len(lite_tasks) < len(all_tasks)

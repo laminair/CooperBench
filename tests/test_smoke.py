@@ -5,6 +5,11 @@ These tests should run fast and catch obvious breakages.
 
 import subprocess
 import sys
+from pathlib import Path
+
+# Dataset directory relative to CooperBench package
+COOPERBENCH_DIR = Path(__file__).parent.parent
+DATASET_DIR = COOPERBENCH_DIR / "dataset"
 
 
 class TestSmoke:
@@ -67,7 +72,7 @@ class TestSmoke:
         from cooperbench import discover_tasks
 
         # Should return list (possibly empty if no dataset)
-        tasks = discover_tasks()
+        tasks = discover_tasks(dataset_dir=DATASET_DIR)
         assert isinstance(tasks, list)
 
     def test_discover_runs_callable(self):
