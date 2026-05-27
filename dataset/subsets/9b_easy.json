@@ -1,0 +1,82 @@
+{
+  "name": "9b_easy",
+  "description": "Easy tasks for smaller models: Python-only, small patches, high clean-merge rate. Selected for 9B-class models where baseline pass rate is expected to be low.",
+  "stats": {
+    "tasks": 8,
+    "pairs": 20,
+    "repos": 6
+  },
+  "tasks": [
+    {
+      "repo": "dottxt_ai_outlines_task",
+      "task_id": 1655,
+      "pairs": [
+        [2, 5],
+        [2, 6],
+        [5, 6],
+        [2, 8],
+        [1, 3]
+      ]
+    },
+    {
+      "repo": "llama_index_task",
+      "task_id": 17244,
+      "pairs": [
+        [2, 7],
+        [1, 2],
+        [1, 7]
+      ]
+    },
+    {
+      "repo": "huggingface_datasets_task",
+      "task_id": 6252,
+      "pairs": [
+        [1, 6],
+        [3, 6],
+        [1, 3]
+      ]
+    },
+    {
+      "repo": "dspy_task",
+      "task_id": 8635,
+      "pairs": [
+        [2, 5],
+        [3, 5],
+        [2, 3]
+      ]
+    },
+    {
+      "repo": "pillow_task",
+      "task_id": 25,
+      "pairs": [
+        [1, 2],
+        [1, 4]
+      ]
+    },
+    {
+      "repo": "dspy_task",
+      "task_id": 8563,
+      "pairs": [
+        [1, 6],
+        [4, 6]
+      ]
+    },
+    {
+      "repo": "pallets_jinja_task",
+      "task_id": 1621,
+      "pairs": [
+        [2, 7],
+        [2, 3],
+        [3, 7]
+      ]
+    },
+    {
+      "repo": "pallets_jinja_task",
+      "task_id": 1559,
+      "pairs": [
+        [5, 10],
+        [1, 10]
+      ]
+    }
+  ]
+}

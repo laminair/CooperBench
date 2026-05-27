@@ -93,6 +93,9 @@ swe-agent = [
     "boto3>=1.34",
     "docker>=7.0",
 ]
+gepa = [
+    "gepa>=0.1.1",
+]
 gcp = [
     "cooperbench",
     "google-cloud-batch>=0.17",
@@ -111,7 +114,7 @@ dev = [
     # 'fakeredis'``.
     "fakeredis>=2.0",
 ]
-all = ["cooperbench[swe-agent,gcp,dev]"]
+all = ["cooperbench[swe-agent,gcp,gepa,dev]"]
 
 [project.scripts]
 cooperbench = "cooperbench.cli:main"
