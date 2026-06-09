@@ -243,6 +243,26 @@ def main():
         default=None,
         help="Root to write run logs under (default: ./logs).",
     )
+    run_parser.add_argument(
+        "--base-url",
+        default=None,
+        help=(
+            "Anthropic-compatible base URL for the model endpoint "
+            "(forwarded to the agent as ANTHROPIC_BASE_URL). vLLM v0.17.1+ "
+            "exposes /v1/messages natively, so this can point straight at "
+            "a vLLM server; no proxy needed. Example: "
+            "https://your-vllm-host.example.com"
+        ),
+    )
+    run_parser.add_argument(
+        "--auth-token",
+        default=None,
+        help=(
+            "Auth token paired with --base-url (forwarded as "
+            "ANTHROPIC_AUTH_TOKEN). Use any placeholder for unauthenticated "
+            "endpoints."
+        ),
+    )
 
     # === eval command ===
     eval_parser = subparsers.add_parser(
@@ -333,11 +353,20 @@ def _run_command(args):
     from cooperbench.runner import run
     from cooperbench.team_harness import TeamHarnessConfig
 
+    # Forward optional Anthropic-compatible endpoint to the agent via env
+    # vars.  vLLM v0.17.1+ exposes ``/v1/messages`` natively, so users can
+    # point ``--base-url`` straight at a vLLM server without any proxy.
+    # Older approaches that spawned a local LiteLLM proxy were removed
+    # in v0.0.18 — see CHANGELOG.
+    if getattr(args, "base_url", None):
+        os.environ["ANTHROPIC_BASE_URL"] = args.base_url
+    if getattr(args, "auth_token", None):
+        os.environ["ANTHROPIC_AUTH_TOKEN"] = args.auth_token
+
     features = None
     if args.features:
         features = [int(f.strip()) for f in args.features.split(",")]
 
-    # Auto-generate name if not provided
     run_name = args.name
     if not run_name:
         run_name = _generate_run_name(
