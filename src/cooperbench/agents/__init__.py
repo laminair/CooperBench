@@ -109,6 +109,9 @@ AGENT_SHORTHANDS = {
     "claude_code": "cc",
     "codex": "cx",
     "robophd": "rp",
+    "opencode_zen": "oz",
+    "ollama": "ol",
+    "llama_cpp": "lc",
 }
 
 

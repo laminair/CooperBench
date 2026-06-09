@@ -20,6 +20,7 @@ from rich.progress import (
 from rich.table import Table
 
 from cooperbench.infra.redis import ensure_redis
+from cooperbench.reporting import WandBLogger
 from cooperbench.runner.coop import execute_coop
 from cooperbench.runner.solo import execute_solo
 from cooperbench.runner.tasks import discover_tasks
@@ -52,6 +53,8 @@ def run(
     auto_eval: bool = True,
     eval_concurrency: int = 10,
     backend: str = "docker",
+    wandb_project: str | None = None,
+    wandb_entity: str | None = None,
     agent_config: str | None = None,
     dataset_dir: str | None = None,
     logs_dir: str | None = None,
@@ -103,6 +106,22 @@ def run(
 
     _print_header(
         run_name, setting, tasks, agent, model_name, concurrency, is_single, is_solo, git_enabled, messaging_enabled
+    )
+
+    # Weights & Biases logging
+    wb = WandBLogger(
+        project=wandb_project,
+        entity=wandb_entity,
+        run_name=run_name,
+        config={
+            "agent": agent,
+            "model": model_name,
+            "setting": setting,
+            "backend": backend,
+            "concurrency": concurrency,
+            "git_enabled": git_enabled,
+            "messaging_enabled": messaging_enabled,
+        },
     )
 
     # Solo mode doesn't need Redis or git server
@@ -204,6 +223,7 @@ def run(
                             eval_stats = (eval_passed, eval_failed, eval_errors, eval_skipped, [])
                         else:
                             eval_stats = None
+                        _log_task_to_wandb(wb, result, tasks[0], eval_result)
     else:
         # Multiple tasks - show progress
         completed, skipped, failed, total_cost, results_list, eval_stats = _run_with_progress(
@@ -216,6 +236,7 @@ def run(
             run_name,
             force,
             backend,
+            wb=wb,
             logs_dir=logs_dir,
             dataset_dir=dataset_dir,
         )
@@ -239,6 +260,10 @@ def run(
     }
 
     _print_summary(completed, skipped, failed, run_totals["total_cost"], time_info, log_dir / setting, eval_stats)
+    if wb.is_active:
+        summary = _build_wandb_summary(run_name, len(tasks), completed, skipped, failed, total_cost, session_time, eval_stats, log_dir)
+        wb.log_summary(summary)
+        wb.finish()
 
 
 def _print_header(
@@ -399,6 +424,7 @@ def _run_with_progress(
     force: bool,
     backend: str = "docker",
     *,
+    wb: WandBLogger | None = None,
     logs_dir: str | None = None,
     dataset_dir: str | None = None,
 ) -> tuple:
@@ -489,6 +515,7 @@ def _run_with_progress(
                                 task_info, result, task_name, feat_str = eval_futures.pop(eval_future)
                                 try:
                                     eval_result = eval_future.result()
+                                    _log_task_to_wandb(wb, result, task_info, eval_result)
                                     eval_stats = _process_eval_result(eval_result, task_info)
                                     if eval_stats:
                                         ep, ef, ee, es = eval_stats[:4]
@@ -537,6 +564,7 @@ def _run_with_progress(
                     task_info, result, task_name, feat_str = eval_futures.pop(eval_future)
                     try:
                         eval_result = eval_future.result()
+                        _log_task_to_wandb(wb, result, task_info, eval_result)
                         eval_stats = _process_eval_result(eval_result, task_info)
                         if eval_stats:
                             ep, ef, ee, es = eval_stats[:4]
@@ -577,6 +605,97 @@ def _run_with_progress(
 
     eval_stats = (eval_passed, eval_failed, eval_errors, eval_skipped, eval_results) if auto_eval else None
     return completed, skipped, failed, total_cost, results_list, eval_stats
+
+
+
+def _log_task_to_wandb(wb, result, task_info, eval_result=None):
+    """Extract task metrics and log to WandB."""
+    if not wb.is_active:
+        return
+
+    repo = task_info["repo"]
+    task_id = task_info["task_id"]
+    features = task_info["features"]
+    duration = result.get("duration", 0) or result.get("duration_seconds", 0)
+
+    if result.get("results"):
+        run_status = "Submitted"
+        total_steps = 0
+        total_lines = 0
+        for r in result.get("results", {}).values():
+            total_steps += r.get("steps", 0)
+            total_lines += len(r.get("patch", "").splitlines()) if r.get("patch") else r.get("patch_lines", 0)
+            if r.get("status") not in ("Submitted",):
+                run_status = r.get("status", run_status)
+        steps = total_steps
+        patch_lines = total_lines
+    else:
+        r = result.get("result", result.get("agent", {}))
+        run_status = r.get("status", "Error")
+        steps = r.get("steps", 0)
+        patch = r.get("patch", "")
+        patch_lines = r.get("patch_lines", 0) or len(patch.splitlines()) if patch else 0
+
+    both_passed = eval_result.get("both_passed") if eval_result else None
+    f1_passed = (eval_result.get("feature1") or {}).get("passed") if eval_result else None
+    f2_passed = (eval_result.get("feature2") or {}).get("passed") if eval_result else None
+
+    merge = eval_result.get("merge") if eval_result else None
+    merge_status = ""
+    if isinstance(merge, dict):
+        merge_status = merge.get("status", "")
+
+    error = eval_result.get("error", "") if eval_result else ""
+
+    setting = task_info.get("setting", "")
+    if not setting and result.get("results"):
+        setting = "coop"
+    elif not setting:
+        setting = "solo"
+
+    wb.log_task(
+        repo=repo,
+        task_id=task_id,
+        features=features,
+        setting=setting,
+        run_status=run_status,
+        steps=steps,
+        cost=result.get("total_cost", 0),
+        duration_s=duration,
+        patch_lines=patch_lines,
+        both_passed=both_passed,
+        eval_f1_passed=f1_passed,
+        eval_f2_passed=f2_passed,
+        merge_status=merge_status,
+        error=error,
+    )
+
+
+def _build_wandb_summary(run_name, total_tasks, completed, skipped, failed, total_cost, total_time, eval_stats, log_dir):
+    """Build a summary dict for wandb from run/eval data."""
+    summary = {
+        "run_name": run_name,
+        "total_tasks": total_tasks,
+        "completed": completed,
+        "skipped": skipped,
+        "failed": failed,
+        "total_cost": total_cost,
+        "total_time_seconds": total_time,
+        "pass_rate": None,
+    }
+    if eval_stats:
+        ep, ef, ee, es, _ = eval_stats
+        total_eval = ep + ef + ee
+        summary["pass_rate"] = ep / max(ep + ef, 1)
+        summary["eval"] = {
+            "total_evaluated": total_eval,
+            "passed": ep,
+            "failed": ef,
+            "errors": ee,
+            "skipped": es,
+            "pass_rate": ep / max(ep + ef, 1),
+        }
+    return summary
 
 
 def _save_summary(

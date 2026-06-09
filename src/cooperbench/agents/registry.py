@@ -91,6 +91,21 @@ def _auto_register():
     except ImportError:
         pass
 
+    try:
+        import cooperbench.agents.opencode_zen.adapter  # noqa: F401
+    except ImportError:
+        pass
+
+    try:
+        import cooperbench.agents.ollama.adapter  # noqa: F401
+    except ImportError:
+        pass
+
+    try:
+        import cooperbench.agents.llama_cpp.adapter  # noqa: F401
+    except ImportError:
+        pass
+
     # External agents via environment variable
     import os
 

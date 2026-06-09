@@ -263,6 +263,16 @@ def main():
             "endpoints."
         ),
     )
+    run_parser.add_argument(
+        "--wandb-project",
+        default=None,
+        help="Weights & Biases project name for logging (or set WANDB_PROJECT env var).",
+    )
+    run_parser.add_argument(
+        "--wandb-entity",
+        default=None,
+        help="Weights & Biases entity (team/user) name.",
+    )
 
     # === eval command ===
     eval_parser = subparsers.add_parser(
@@ -313,6 +323,16 @@ def main():
         choices=["modal", "docker", "gcp"],
         default="docker",
         help="Execution backend: modal (cloud), docker (local), or gcp (GCP Batch) (default: docker)",
+    )
+    eval_parser.add_argument(
+        "--wandb-project",
+        default=None,
+        help="Weights & Biases project name for logging (or set WANDB_PROJECT env var).",
+    )
+    eval_parser.add_argument(
+        "--wandb-entity",
+        default=None,
+        help="Weights & Biases entity (team/user) name.",
     )
     eval_parser.add_argument(
         "--dataset-dir",
@@ -407,6 +427,8 @@ def _run_command(args):
         auto_eval=not args.no_auto_eval,
         eval_concurrency=args.eval_concurrency,
         backend=args.backend,
+        wandb_project=args.wandb_project,
+        wandb_entity=args.wandb_entity,
         agent_config=args.agent_config if hasattr(args, "agent_config") else None,
         dataset_dir=args.dataset_dir if hasattr(args, "dataset_dir") else None,
         logs_dir=args.log_dir if hasattr(args, "log_dir") else None,
@@ -435,6 +457,8 @@ def _eval_command(args):
         concurrency=args.concurrency,
         force=args.force,
         backend=args.backend,
+        wandb_project=args.wandb_project,
+        wandb_entity=args.wandb_entity,
         dataset_dir=args.dataset_dir if hasattr(args, "dataset_dir") else None,
         logs_dir=args.log_dir if hasattr(args, "log_dir") else None,
     )

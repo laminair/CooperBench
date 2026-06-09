@@ -10,6 +10,7 @@ from rich.table import Table
 
 from cooperbench.eval.runs import discover_runs
 from cooperbench.eval.sandbox import _sanitize_patch, test_merged, test_solo
+from cooperbench.reporting import WandBLogger
 from cooperbench.runner.tasks import DEFAULT_DATASET_DIR, DEFAULT_LOGS_DIR
 from cooperbench.utils import console
 
@@ -25,6 +26,8 @@ def evaluate(
     backend: str = "docker",
     dataset_dir: str | None = None,
     logs_dir: str | None = None,
+    wandb_project: str | None = None,
+    wandb_entity: str | None = None,
 ) -> None:
     """Evaluate completed runs.
 
@@ -96,6 +99,18 @@ def evaluate(
     console.print(f"[dim]backend:[/dim] {backend}")
     console.print()
 
+    # Weights & Biases logging
+    wb = WandBLogger(
+        project=wandb_project,
+        entity=wandb_entity,
+        run_name=run_name,
+        config={
+            "backend": backend,
+            "concurrency": concurrency,
+            "force": force,
+        },
+    )
+
     # For GCP with multiple runs, use batch mode for efficiency
     if backend in ("gcp", "gcp_batch") and len(runs) > 1:
         passed, failed, errors, skipped, results = _run_gcp_batch(runs, concurrency, force, dataset_dir=dataset_dir)
@@ -118,6 +133,7 @@ def evaluate(
 
             result = eval_run(run_info)
             if result:
+                _log_eval_to_wandb(wb, run_info, result)
                 if result.get("skipped"):
                     skipped = 1
                     console.print("[dim]→ skip[/dim] (already evaluated)")
@@ -141,6 +157,15 @@ def evaluate(
     log_dir = logs_root / run_name
     _save_summary(log_dir, run_name, len(runs), passed, failed, errors, skipped, results)
     _print_summary(passed, failed, errors, skipped, len(runs))
+
+    # WandB: log summary and finish
+    if wb.is_active:
+        eval_summary_path = log_dir / "eval_summary.json"
+        if eval_summary_path.exists():
+            with open(eval_summary_path) as f:
+                summary_data = json.load(f)
+            wb.log_summary(summary_data)
+        wb.finish()
 
 
 def _run_gcp_batch(
@@ -459,7 +484,39 @@ def _run_with_progress(runs: list, eval_run, concurrency: int) -> tuple:
     return passed, failed, errors, skipped, results
 
 
+
+def _log_eval_to_wandb(wb, run_info, eval_result):
+    """Log a single evaluation result to WandB."""
+    if not wb.is_active:
+        return
+
+    repo = run_info["repo"]
+    task_id = run_info["task_id"]
+    features = run_info["features"]
+    setting = run_info.get("setting", "coop" if eval_result.get("merge") else "solo")
+
+    f1_passed = (eval_result.get("feature1") or {}).get("passed", False)
+    f2_passed = (eval_result.get("feature2") or {}).get("passed", False)
+    merge = eval_result.get("merge")
+    merge_status = ""
+    if isinstance(merge, dict):
+        merge_status = merge.get("status", "")
+
+    wb.log_task(
+        repo=repo,
+        task_id=task_id,
+        features=features,
+        setting=setting,
+        both_passed=eval_result.get("both_passed"),
+        eval_f1_passed=f1_passed,
+        eval_f2_passed=f2_passed,
+        merge_status=merge_status,
+        error=eval_result.get("error", "") or "",
+    )
+
+
 def _save_summary(
+
     log_dir: Path,
     run_name: str,
     total_runs: int,
