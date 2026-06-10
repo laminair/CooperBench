@@ -20,6 +20,7 @@
 #   LLAMA_CPP_MODEL                  — Model name (default: openai/Qwen3.6-27B-Q4_K_M.gguf)
 #   LLAMA_CPP_COMPACTION_TRIGGER     — Compaction token threshold (auto from ctx size)
 #   COOPERBENCH_CONCURRENCY          — Parallel task count (default: auto)
+#   COOPERBENCH_VRAM_HEADROOM_MB     — VRAM reserved for memory spikes (default: 15000)
 #   WANDB_PROJECT                    — Weights & Biases project (or --wandb-project)
 #   WANDB_ENTITY                     — Weights & Biases entity (or --wandb-entity)
 
@@ -38,6 +39,7 @@ RUN_SOLO=true
 RUN_COOP=true
 FORCE=""
 CONCURRENCY="${COOPERBENCH_CONCURRENCY:-}"
+VRAM_HEADROOM_MB="${COOPERBENCH_VRAM_HEADROOM_MB:-15000}"
 WANDB_PROJECT="${WANDB_PROJECT:-}"
 WANDB_ENTITY="${WANDB_ENTITY:-}"
 
@@ -100,25 +102,35 @@ if command -v nvidia-smi &>/dev/null; then
 fi
 
 # Auto-set concurrency based on available VRAM and context size.
-# Per-task estimate: model (~17 GB split across GPUs by tensor-parallelism)
-# plus KV cache (~0.1 GB per 1K ctx).  With tensor-split the model cost
-# is shared; KV cache is per-request.
+# Per-task estimate: model (size from server metadata) plus KV cache
+# (~0.09 GB per 1K ctx).  Both are split across GPUs by tensor-parallelism
+# so the aggregate formula holds.
 if [ -z "$CONCURRENCY" ]; then
-    if [ "$GPU_TOTAL_VRAM_MB" -gt 160000 ]; then
-        # 180 GB class (2x RTX 6000 Pro): model ~8.5GB/GPU, KV ~3GB/task/GPU
+    if [ "$GPU_TOTAL_VRAM_MB" -gt 0 ] && [ "$SERVER_CTX" != "?" ] && [ "$SERVER_SIZE" != "?" ]; then
+        CONCURRENCY=$(python3 -c "
+total_gb  = (${GPU_TOTAL_VRAM_MB} - ${VRAM_HEADROOM_MB}) / 1024.0
+model_gb  = ${SERVER_SIZE} / 1e9
+kv_gb     = float(${SERVER_CTX}) / 1000 * 0.09
+tasks     = int(total_gb / (model_gb + kv_gb))
+print(max(1, min(tasks, 8)))
+")
+        log "auto-set concurrency=$CONCURRENCY (${GPU_COUNT}x GPU, $(python3 -c "print(f'${GPU_TOTAL_VRAM_MB}/1024:.0f')") GB VRAM, ${VRAM_HEADROOM_MB}MB headroom, ctx=$SERVER_CTX)"
+    elif [ "$GPU_TOTAL_VRAM_MB" -gt 160000 ]; then
         CONCURRENCY=8
+        log "auto-set concurrency=$CONCURRENCY (${GPU_COUNT}x GPU, $(python3 -c "print(f'${GPU_TOTAL_VRAM_MB}/1024:.0f')") GB VRAM, ctx unknown)"
     elif [ "$GPU_TOTAL_VRAM_MB" -gt 80000 ]; then
-        # 90 GB class (1x RTX 6000 Pro or similar)
         CONCURRENCY=6
+        log "auto-set concurrency=$CONCURRENCY (${GPU_COUNT}x GPU, $(python3 -c "print(f'${GPU_TOTAL_VRAM_MB}/1024:.0f')") GB VRAM, ctx unknown)"
     elif [ "$GPU_COUNT" -ge 2 ]; then
-        # 2x smaller GPUs (e.g. 2x 4090)
         CONCURRENCY=4
+        log "auto-set concurrency=$CONCURRENCY (${GPU_COUNT}x GPU, $(python3 -c "print(f'${GPU_TOTAL_VRAM_MB}/1024:.0f')") GB VRAM, ctx unknown)"
     elif [ "$GPU_TOTAL_VRAM_MB" -gt 40000 ]; then
         CONCURRENCY=2
+        log "auto-set concurrency=$CONCURRENCY (${GPU_COUNT}x GPU, $(python3 -c "print(f'${GPU_TOTAL_VRAM_MB}/1024:.0f')") GB VRAM, ctx unknown)"
     else
         CONCURRENCY=1
+        log "auto-set concurrency=$CONCURRENCY (${GPU_COUNT}x GPU, $(python3 -c "print(f'${GPU_TOTAL_VRAM_MB}/1024:.0f')") GB VRAM, ctx unknown)"
     fi
-    log "auto-set concurrency=$CONCURRENCY (${GPU_COUNT}x GPU, $(python3 -c "print(f'${GPU_TOTAL_VRAM_MB}/1024:.0f')") GB VRAM)"
 fi
 
 # Auto-set compaction trigger if not already set
