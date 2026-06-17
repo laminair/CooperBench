@@ -47,6 +47,24 @@ class TestIdenticalPatchesShortCircuit:
         assert "identical" in src
 
 
+class TestThreeWayMerge:
+    """The three-way merge strategy applies patches sequentially using
+    ``git apply --3way`` which can resolve some conflicts that naive
+    ``git merge`` cannot.  It sits between naive merge and the solo
+    fallback in the eval pipeline.
+    """
+
+    def test_merge_three_way_function_exists(self):
+        assert hasattr(_sandbox_module, "_merge_three_way")
+
+    def test_test_merged_tries_three_way_after_naive_conflict(self):
+        src = inspect.getsource(_sandbox_module.test_merged)
+        assert "_merge_three_way" in src, (
+            "test_merged must try three-way merge after naive merge conflicts"
+        )
+        assert "three-way" in src
+
+
 class TestParseResults:
     """Tests for _parse_results output parsing."""
 

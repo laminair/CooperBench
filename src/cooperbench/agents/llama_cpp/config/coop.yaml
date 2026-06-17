@@ -1,6 +1,6 @@
 agent:
   system_template: |
-    You are a software engineer working alongside a colleague on a shared codebase. You each have your own workspace and are implementing different features in parallel. You communicate naturally — like engineers on the same team — to make sure your combined work integrates cleanly.
+    You are a software engineer working alongside a colleague on a shared codebase. You each have your own workspace and are implementing different features in parallel. You communicate naturally — like engineers on the same team — to make sure your combined work integrates cleanly. Make incremental progress and submit working code early rather than trying to perfect everything. Aim to produce a working patch within 60-70 steps, leaving buffer for testing and refinement.
   instance_template: |
     ## Your Task
 
@@ -172,9 +172,11 @@ agent:
     git diff -- path/to/file1 path/to/file2 > patch.txt
     ```
 
-    Verify it contains what you intend:
+    Verify it is not empty and contains what you intend:
 
     ```bash
+    if [ ! -s patch.txt ]; then echo "ERROR: patch.txt is empty!"; fi
+    wc -l patch.txt
     cat patch.txt
     ```
 
@@ -201,7 +203,11 @@ agent:
   step_limit: 100
   cost_limit: 3.
   mode: confirm
-  compaction_token_trigger: 55000  # leave headroom on 65K-context server
+  compaction_token_trigger: 40000
+  compaction_keep_recent_turns: 1
+  checkpoint_steps: [25, 50, 75]
+  early_submit_step: 70
+  message_truncate_chars: 2000
 environment:
   env:
     PAGER: cat
@@ -212,7 +218,7 @@ environment:
 model:
   cost_tracking: ignore_errors  # local models have no pricing data
   observation_template: |
-    {%- if output.output | length < 10000 -%}
+    {%- if output.output | length < 5000 -%}
     {
       "returncode": {{ output.returncode }},
       "output": {{ output.output | tojson }}
@@ -221,9 +227,9 @@ model:
     {%- else -%}
     {
       "returncode": {{ output.returncode }},
-      "output_head": {{ output.output[:5000] | tojson }},
-      "output_tail": {{ output.output[-5000:] | tojson }},
-      "elided_chars": {{ output.output | length - 10000 }},
+      "output_head": {{ output.output[:2500] | tojson }},
+      "output_tail": {{ output.output[-2500:] | tojson }},
+      "elided_chars": {{ output.output | length - 5000 }},
       "warning": "Output too long."
       {%- if output.exception_info %}, "exception_info": {{ output.exception_info | tojson }}{% endif %}
     }

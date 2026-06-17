@@ -11,6 +11,7 @@
 #   --concurrency N     Parallel tasks (default: auto from GPU count, fallback 1)
 #                       Override with COOPERBENCH_CONCURRENCY env var
 #   --force             Re-run tasks even if results exist
+#   --no-auto-compaction   Don't auto-set LLAMA_CPP_COMPACTION_TRIGGER (use config value)
 #   --wandb-project P   Weights & Biases project name
 #   --wandb-entity E    Weights & Biases entity (team/user)
 #
@@ -40,23 +41,25 @@ RUN_COOP=true
 FORCE=""
 CONCURRENCY="${COOPERBENCH_CONCURRENCY:-}"
 VRAM_HEADROOM_MB="${COOPERBENCH_VRAM_HEADROOM_MB:-15000}"
+AUTO_COMPACTION=true
 WANDB_PROJECT="${WANDB_PROJECT:-}"
 WANDB_ENTITY="${WANDB_ENTITY:-}"
 
 # ── Parse args ────────────────────────────────────────────────────────
 
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --solo-only) RUN_COOP=false; shift ;;
-        --coop-only) RUN_SOLO=false; shift ;;
-        --subset) SUBSET="$2"; shift 2 ;;
-        --concurrency) CONCURRENCY="$2"; shift 2 ;;
-        --force) FORCE="--force"; shift ;;
-        --wandb-project) WANDB_PROJECT="$2"; shift 2 ;;
-        --wandb-entity) WANDB_ENTITY="$2"; shift 2 ;;
-        *) echo "Unknown option: $1"; exit 1 ;;
-    esac
-done
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --solo-only) RUN_COOP=false; shift ;;
+            --coop-only) RUN_SOLO=false; shift ;;
+            --subset) SUBSET="$2"; shift 2 ;;
+            --concurrency) CONCURRENCY="$2"; shift 2 ;;
+            --force) FORCE="--force"; shift ;;
+            --no-auto-compaction) AUTO_COMPACTION=false; shift ;;
+            --wandb-project) WANDB_PROJECT="$2"; shift 2 ;;
+            --wandb-entity) WANDB_ENTITY="$2"; shift 2 ;;
+            *) echo "Unknown option: $1"; exit 1 ;;
+        esac
+    done
 
 # ── Colors ────────────────────────────────────────────────────────────
 
@@ -102,16 +105,17 @@ if command -v nvidia-smi &>/dev/null; then
 fi
 
 # Auto-set concurrency based on available VRAM and context size.
-# Per-task estimate: model (size from server metadata) plus KV cache
-# (~0.09 GB per 1K ctx).  Both are split across GPUs by tensor-parallelism
-# so the aggregate formula holds.
+# With a single llama-server, model weights are loaded once and shared
+# across concurrent requests. Only the KV cache is per-request.
+# Formula: (available_vram - model_size) / kv_cache_per_request
 if [ -z "$CONCURRENCY" ]; then
     if [ "$GPU_TOTAL_VRAM_MB" -gt 0 ] && [ "$SERVER_CTX" != "?" ] && [ "$SERVER_SIZE" != "?" ]; then
         CONCURRENCY=$(python3 -c "
-total_gb  = (${GPU_TOTAL_VRAM_MB} - ${VRAM_HEADROOM_MB}) / 1024.0
-model_gb  = ${SERVER_SIZE} / 1e9
-kv_gb     = float(${SERVER_CTX}) / 1000 * 0.09
-tasks     = int(total_gb / (model_gb + kv_gb))
+total_gb    = (${GPU_TOTAL_VRAM_MB} - ${VRAM_HEADROOM_MB}) / 1024.0
+model_gb    = ${SERVER_SIZE} / 1e9
+kv_gb       = float(${SERVER_CTX}) / 1000 * 0.09
+kv_budget   = total_gb - model_gb
+tasks       = int(kv_budget / kv_gb) if kv_gb > 0 else 1
 print(max(1, min(tasks, 8)))
 ")
         log "auto-set concurrency=$CONCURRENCY (${GPU_COUNT}x GPU, $(python3 -c "print(f'${GPU_TOTAL_VRAM_MB}/1024:.0f')") GB VRAM, ${VRAM_HEADROOM_MB}MB headroom, ctx=$SERVER_CTX)"
@@ -133,11 +137,12 @@ print(max(1, min(tasks, 8)))
     fi
 fi
 
-# Auto-set compaction trigger if not already set
-if [ -z "${LLAMA_CPP_COMPACTION_TRIGGER:-}" ] && [ "$SERVER_CTX" != "?" ]; then
-    # Leave ~10K headroom from the server's ctx size
-    LLAMA_CPP_COMPACTION_TRIGGER=$((SERVER_CTX - 10000))
-    log "auto-set compaction_trigger=$LLAMA_CPP_COMPACTION_TRIGGER (server ctx=$SERVER_CTX)"
+# Auto-set compaction trigger if not already set and auto-compaction enabled.
+# Use 60% of server context to leave headroom for the summary operation itself.
+# This matches the optimized config value (40000 for 65K ctx).
+if $AUTO_COMPACTION && [ -z "${LLAMA_CPP_COMPACTION_TRIGGER:-}" ] && [ "$SERVER_CTX" != "?" ]; then
+    LLAMA_CPP_COMPACTION_TRIGGER=$(python3 -c "print(int(float(${SERVER_CTX}) * 0.6))")
+    log "auto-set compaction_trigger=$LLAMA_CPP_COMPACTION_TRIGGER (60% of server ctx=$SERVER_CTX)"
 fi
 export LLAMA_CPP_COMPACTION_TRIGGER
 
@@ -160,7 +165,11 @@ if [ "$GPU_COUNT" -gt 0 ]; then
 fi
 log "  subset:      $SUBSET"
 log "  concurrency: $CONCURRENCY"
-log "  compaction:  ${LLAMA_CPP_COMPACTION_TRIGGER:-from config}"
+if $AUTO_COMPACTION; then
+    log "  compaction:  ${LLAMA_CPP_COMPACTION_TRIGGER:-from config} (auto)"
+else
+    log "  compaction:  from config (auto disabled)"
+fi
 if [ -n "$WANDB_PROJECT" ]; then
     log "  wandb:       $WANDB_PROJECT${WANDB_ENTITY:+ / $WANDB_ENTITY}"
 fi

@@ -247,6 +247,13 @@ class LlamaCppRunner:
                 from cooperbench.agents._coop.runtime import normalize_patch
 
                 patch = normalize_patch(r.get("output") or "")
+                if not patch or len(patch.strip()) < 50:
+                    logger.warning(
+                        "[%s] Empty or invalid patch detected (%d chars). "
+                        "Agent may have submitted without making changes.",
+                        agent_id,
+                        len(patch),
+                    )
         except Exception:
             pass
 

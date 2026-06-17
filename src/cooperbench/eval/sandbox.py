@@ -227,11 +227,19 @@ fi
         if any_apply_failed:
             merge_status = "missing_input"
         elif naive_result["conflict"]:
-            merge_status = "conflicts"
+            threeway_result = _merge_three_way(sb, base_sha)
+            if not threeway_result["conflict"] and not threeway_result.get("patch1_failed"):
+                merge_status = "clean"
+                strategy_used = "three-way"
+                merged_diff = threeway_result["diff"]
+            else:
+                merge_status = "conflicts"
+                strategy_used = "naive"
+                merged_diff = naive_result["diff"]
         else:
             merge_status = "clean"
-        strategy_used = "naive"
-        merged_diff = naive_result["diff"]
+            strategy_used = "naive"
+            merged_diff = naive_result["diff"]
 
         # Step 3: Compute the merged-tree test result.
         #
@@ -242,7 +250,10 @@ fi
         #   Skip the merged-tree tests and go straight to the lead-alone
         #   fallback below.
         if merge_status == "clean":
-            sb.exec("cp", "/patches/naive_diff.patch", "/patches/merged.patch")
+            if strategy_used == "three-way":
+                sb.exec("cp", "/patches/three_way_diff.patch", "/patches/merged.patch")
+            else:
+                sb.exec("cp", "/patches/naive_diff.patch", "/patches/merged.patch")
             verify = sb.exec("test", "-f", "/patches/merged.patch")
             if verify.returncode != 0:
                 return _merged_error_result(f"Failed to create merged.patch (strategy: {strategy_used})")
@@ -575,11 +586,57 @@ git checkout .gitattributes 2>/dev/null || rm -f .gitattributes
     if "UNION_STATUS=conflicts" in output:
         return {"error": "Union merge still has conflicts", "diff": "", "output": output}
 
-    # Read diff from file
     diff_result = sb.exec("cat", "/patches/union_diff.patch")
     diff = diff_result.stdout_read()
 
     return {"diff": diff, "output": output, "error": None}
+
+
+def _merge_three_way(sb: Sandbox, base_sha: str) -> dict:
+    """Try sequential patch application with three-way merge for conflict resolution.
+
+    Applies patch1 first, then attempts patch2 with --3way which can resolve
+    some conflicts by using the base version as a reference.
+    """
+    commands = f"""
+cd /workspace/repo
+git checkout {base_sha} 2>&1
+git reset --hard HEAD 2>&1
+git clean -fdx 2>&1
+
+# Apply patch1
+if ! git apply /patches/patch1.patch 2>&1; then
+    echo "THREE_WAY_STATUS=patch1_failed"
+    exit 0
+fi
+git add -A 2>&1
+git commit -m "Apply patch1" 2>&1
+
+# Try applying patch2 with --3way for better conflict resolution
+if git apply --3way /patches/patch2.patch 2>&1; then
+    echo "THREE_WAY_STATUS=clean"
+    git add -A 2>&1
+    git commit -m "Apply patch2" 2>&1
+    git diff {base_sha} HEAD > /patches/three_way_diff.patch
+else
+    echo "THREE_WAY_STATUS=conflicts"
+    git checkout {base_sha} 2>&1
+    git reset --hard HEAD 2>&1
+    git clean -fdx 2>&1
+fi
+"""
+    result = sb.exec("bash", "-c", commands)
+    output = result.stdout_read() + result.stderr_read()
+
+    conflict = "THREE_WAY_STATUS=conflicts" in output
+    patch1_failed = "THREE_WAY_STATUS=patch1_failed" in output
+
+    diff = ""
+    if not conflict and not patch1_failed:
+        diff_result = sb.exec("cat", "/patches/three_way_diff.patch")
+        diff = diff_result.stdout_read()
+
+    return {"conflict": conflict, "diff": diff, "output": output, "patch1_failed": patch1_failed}
 
 
 def _run_tests(sb: Sandbox, tests_patch: str, feature_patch: str, base_sha: str) -> dict:

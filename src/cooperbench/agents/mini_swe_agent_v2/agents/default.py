@@ -36,6 +36,12 @@ class AgentConfig(BaseModel):
     """Compact when prompt token count exceeds this threshold."""
     compaction_keep_recent_turns: int = 2
     """Number of recent assistant turns to keep verbatim after compaction."""
+    checkpoint_steps: list[int] = []
+    """Step counts at which to inject progress reminders (e.g. [25, 50, 75])."""
+    early_submit_step: int = 0
+    """Step count after which to check for uncommitted changes and prompt submission. 0 disables."""
+    message_truncate_chars: int = 0
+    """Truncate inter-agent messages longer than this. 0 disables."""
     compaction_summary_prompt: str = (
         "You are summarizing the transcript below so the agent can continue in a "
         "fresh context without re-running commands. You are an outside observer "
@@ -203,28 +209,45 @@ class DefaultAgent:
     def step(self) -> list[dict]:
         """Query the LM, execute actions. Polls for inter-agent messages
         and (in team mode) the shared task list before querying."""
-        # Check for inter-agent messages before querying LLM
         if self.comm:
             messages = self.comm.receive()
             for msg in messages:
                 ts = msg.get("timestamp", "")[:19].replace("T", " ")
                 self.log(f"INBOX: [{msg['from']} @ {ts}] {msg['content']}")
+                content = msg["content"]
+                if 0 < self.config.message_truncate_chars < len(content):
+                    half = self.config.message_truncate_chars // 2
+                    content = content[:half] + "\n...[truncated]...\n" + content[-half:]
                 self.add_messages(
                     self.model.format_message(
                         role="user",
-                        content=f"[Message from {msg['from']}]: {msg['content']}",
+                        content=f"[Message from {msg['from']}]: {content}",
                     )
                 )
-        # In team mode, also refresh the shared task list so the LLM
-        # sees the live state of who's working on what before its next
-        # response.  ``team_poller`` is set by the adapter when team
-        # kwargs are present; absent for solo/coop.
         poller = getattr(self, "team_poller", None)
         if poller is not None:
             summary = poller.poll()
             if summary:
                 self.add_messages(self.model.format_message(role="user", content=summary))
-        return self.execute_actions(self.query())
+        result = self.execute_actions(self.query())
+        if 0 < self.config.early_submit_step <= self.n_calls:
+            try:
+                status = self.env.execute({"command": "cd /workspace/repo && git status --porcelain 2>/dev/null"})
+                if status.get("output", "").strip():
+                    submit_prompt = self.model.format_message(
+                        role="user",
+                        content=(
+                            f"[SYSTEM] You have used {self.n_calls} of {self.config.step_limit} steps and have "
+                            "uncommitted changes. If your implementation is ready, submit now:\n"
+                            "```bash\n"
+                            "git diff > patch.txt && cat patch.txt && echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n"
+                            "```"
+                        ),
+                    )
+                    self.add_messages(submit_prompt)
+            except Exception:
+                pass
+        return result
 
     def _get_prompt_tokens(self, message: dict) -> int:
         return message.get("extra", {}).get("response", {}).get("usage", {}).get("prompt_tokens", 0)
@@ -302,6 +325,18 @@ class DefaultAgent:
         if self._should_compact():
             self._compact_messages()
         self.n_calls += 1
+        if self.config.checkpoint_steps and self.n_calls in self.config.checkpoint_steps and self.config.step_limit > 0:
+            remaining = self.config.step_limit - self.n_calls
+            checkpoint_msg = self.model.format_message(
+                role="user",
+                content=(
+                    f"[SYSTEM PROGRESS] Step {self.n_calls}/{self.config.step_limit} "
+                    f"({remaining} steps remaining). "
+                    "If you have made code changes, consider writing them to patch.txt and submitting. "
+                    "A partial working solution is better than no solution."
+                ),
+            )
+            self.add_messages(checkpoint_msg)
         message = self.model.query(self.messages)
         self.cost += message.get("extra", {}).get("cost", 0.0)
         self._last_prompt_tokens = self._get_prompt_tokens(message)
