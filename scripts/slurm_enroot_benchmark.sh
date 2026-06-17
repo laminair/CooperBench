@@ -49,9 +49,6 @@
 
 set -euo pipefail
 
-# Always run from the repo root (SLURM may start in a different CWD)
-cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.."
-
 # ── Logging ────────────────────────────────────────────────────────────
 
 GREEN='\033[0;32m'
@@ -78,9 +75,9 @@ WANDB_ENTITY="${WANDB_ENTITY:-}"
 VRAM_HEADROOM_MB="${VRAM_HEADROOM_MB:-15000}"
 NO_AUTO_COMPACTION="${NO_AUTO_COMPACTION:-false}"
 
-CONTAINER_IMAGE="${CONTAINER_IMAGE:-cooperbench_v1.sqsh}"
-CONTAINER_NAME="${CONTAINER_NAME:-cooperbench_v1}"
 WORKSPACE_SRC="${WORKSPACE_SRC:-/dss/dssfs04/lwp-dss-0002/pn72yi/pn72yi-dss-0000/ge56heh2}"
+CONTAINER_IMAGE="${CONTAINER_IMAGE:-${WORKSPACE_SRC}/CooperBench/cooperbench_v1.sqsh}"
+CONTAINER_NAME="${CONTAINER_NAME:-cooperbench_v1}"
 MODEL_PATH="${MODEL_PATH:-/workspace/.cache/llama_cache/Qwen_Qwen3.5-27B-Q4_K_M.gguf}"
 LLAMA_SERVER_PATH="${LLAMA_SERVER_PATH:-}"
 LLAMA_SERVER_PORT="${LLAMA_SERVER_PORT:-8050}"
