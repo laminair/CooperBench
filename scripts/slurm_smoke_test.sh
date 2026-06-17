@@ -19,6 +19,9 @@
 
 set -euo pipefail
 
+# Always run from the repo root (SLURM may start in a different CWD)
+cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.."
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
