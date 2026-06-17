@@ -45,7 +45,7 @@ SKIP_PODMAN="${SKIP_PODMAN:-false}"
 
 SMOKE_REPO="go_chi_task"
 SMOKE_TASK_ID="26"
-SMOKE_RUN_NAME="smoke-test-solo"
+SMOKE_RUN_NAME="smoke-$(date +%Y%m%d-%H%M%S)"
 AGENT_CONFIG="${AGENT_CONFIG:-${COOPERBENCH_DIR}/src/cooperbench/agents/llama_cpp/config/enroot_hpc.yaml}"
 
 LLAMA_PID=""
