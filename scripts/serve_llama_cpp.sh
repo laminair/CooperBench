@@ -65,10 +65,11 @@ err()  { echo -e "${RED}[llama-serve]${NC} $*"; }
 
 # ── Find llama-server binary ──────────────────────────────────────────
 
-LLAMA_SERVER="/workspace/llama.cpp/build/bin/llama-server"
+LLAMA_SERVER=""
 
 # Check common locations
 for candidate in \
+    "/workspace/llama.cpp/build/bin/llama-server"
     "$PROJECT_DIR/../local-llm-runtime/llama.cpp/build/bin/llama-server" \
     "$HOME/code/local-llm-runtime/llama.cpp/build/bin/llama-server" \
     "$(which llama-server 2>/dev/null)" \
@@ -94,6 +95,7 @@ fi
 if [ -z "${LLAMA_MODEL_PATH:-}" ]; then
     # Auto-detect: look for Qwen3.6 gguf in common locations
     for candidate in \
+        "/workspace/.cache/llama_cache/Qwen_Qwen3.5-27B-Q4_K_M.gguf" \
         "$HOME/.cache/huggingface/qwen3.6-27b/Qwen3.6-27B-Q4_K_M.gguf" \
         "$HOME/.cache/huggingface/hub/models--Qwen--Qwen3.6-27B*/**/*.gguf" \
         "$PROJECT_DIR/models/*.gguf"; do
