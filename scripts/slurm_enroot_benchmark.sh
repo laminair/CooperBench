@@ -1,39 +1,42 @@
 #!/usr/bin/env bash
-# slurm_enroot_benchmark.sh — SLURM batch job for CooperBench via enroot container.
+# slurm_enroot_benchmark.sh — SLURM batch job for CooperBench via enroot + rootful Podman.
 #
-# Submit with:
-#   sbatch scripts/slurm_enroot_benchmark.sh
+# One job per setting. Submit separately for solo and coop:
 #
-# Override defaults via --export:
-#   sbatch --export=SUBSET=flash_25,CONCURRENCY=4 scripts/slurm_enroot_benchmark.sh
+#   sbatch --time=10:00:00 --export=SETTING=solo scripts/slurm_enroot_benchmark.sh
+#   sbatch --time=16:00:00 --export=SETTING=coop scripts/slurm_enroot_benchmark.sh
 #
-# Overridable environment variables:
+# For the full 652-task benchmark (not flash_25 subset):
+#   sbatch --time=24:00:00 --export=SETTING=solo,SUBSET=full ...
+#   sbatch --time=36:00:00 --export=SETTING=coop,SUBSET=full ...
+#
+# Overridable environment variables (via --export on sbatch):
+#   SETTING              — Benchmark setting: solo or coop (default: solo)
 #   SUBSET               — Benchmark subset (default: flash_25)
-#   CONCURRENCY           — Parallel tasks (default: auto from VRAM)
-#   SOLO_ONLY             — Run only solo benchmark (default: false)
-#   COOP_ONLY             — Run only coop benchmark (default: false)
-#   SKIP_PREPARE          — Skip dataset download and dep sync (default: false)
-#   FORCE                 — Re-run completed tasks (default: false)
-#   BACKEND               — Sandbox backend (default: docker)
-#   WANDB_PROJECT         — Weights & Biases project name
-#   WANDB_ENTITY          — Weights & Biases entity
-#   VRAM_HEADROOM_MB      — VRAM headroom in MiB (default: 15000)
-#   NO_AUTO_COMPACTION    — Disable auto compaction trigger (default: false)
+#   CONCURRENCY          — Parallel tasks (default: auto from VRAM)
+#   SKIP_PREPARE         — Skip dataset download and dep sync (default: false)
+#   FORCE                — Re-run completed tasks (default: false)
+#   BACKEND              — Sandbox backend (default: docker)
+#   WANDB_PROJECT        — Weights & Biases project name
+#   WANDB_ENTITY         — Weights & Biases entity
+#   VRAM_HEADROOM_MB     — VRAM headroom in MiB (default: 15000)
+#   NO_AUTO_COMPACTION   — Disable auto compaction trigger (default: false)
 #
 # Container / paths (override if your setup differs):
-#   CONTAINER_IMAGE       — enroot .sqsh image (default: cooperbench_v0.sqsh)
-#   CONTAINER_NAME        — enroot container name (default: cooperbench_v0)
-#   WORKSPACE_SRC         — Host path to mount as /workspace
-#   MODEL_PATH            — Path to .gguf file inside container
-#   LLAMA_SERVER_PATH     — Path to llama-server binary inside container
-#   LLAMA_SERVER_PORT     — Port for llama-server (default: 8050)
-#   LLAMA_SERVER_CTX      — Context size (default: 65536)
-#   COOPERBENCH_DIR       — Path to CooperBench repo inside container
+#   CONTAINER_IMAGE      — enroot .sqsh image (default: cooperbench_v1.sqsh)
+#   CONTAINER_NAME       — enroot container name (default: cooperbench_v1)
+#   WORKSPACE_SRC        — Host path mounted as /workspace
+#   MODEL_PATH           — Path to .gguf file inside container
+#   LLAMA_SERVER_PATH    — Path to llama-server binary inside container
+#   LLAMA_SERVER_PORT    — Port for llama-server (default: 8050)
+#   LLAMA_SERVER_CTX     — Context size (default: 65536)
+#   COOPERBENCH_DIR      — Path to CooperBench repo inside container
+#   AGENT_CONFIG         — Path to agent YAML config inside container
+#                          (default: $COOPERBENCH_DIR/src/cooperbench/agents/llama_cpp/config/enroot_hpc.yaml)
 #
-# One-time setup (run once on the cluster):
-#   enroot create cooperbench_v0.sqsh
-#   mkdir -p /dss/.../ge56heh2/.cache/llama_cache
-#   mkdir -p /dss/.../ge56heh2/.cache/hf
+# One-time setup (run once on the cluster, not inside a job):
+#   enroot create --name cooperbench_v1 cooperbench_v1.sqsh
+#   mkdir -p /dss/.../ge56heh2/.cache/{llama_cache,hf}
 #   mkdir -p /dss/.../ge56heh2/CooperBench
 #   cd /dss/.../ge56heh2/CooperBench && git clone ... .
 
@@ -44,8 +47,8 @@
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=16
 #SBATCH --time=24:00:00
-#SBATCH --output=logs/slurm/%j_%x.out
-#SBATCH --error=logs/slurm/%j_%x.err
+#SBATCH --output=logs/slurm/%j_%x_%a.out
+#SBATCH --error=logs/slurm/%j_%x_%a.err
 
 set -euo pipefail
 
@@ -64,10 +67,9 @@ header() { echo -e "\n${CYAN}━━━ $* ━━━${NC}\n"; }
 
 # ── Configuration defaults ─────────────────────────────────────────────
 
+SETTING="${SETTING:-solo}"
 SUBSET="${SUBSET:-flash_25}"
 CONCURRENCY="${CONCURRENCY:-}"
-SOLO_ONLY="${SOLO_ONLY:-false}"
-COOP_ONLY="${COOP_ONLY:-false}"
 SKIP_PREPARE="${SKIP_PREPARE:-false}"
 FORCE="${FORCE:-false}"
 BACKEND="${BACKEND:-docker}"
@@ -76,8 +78,8 @@ WANDB_ENTITY="${WANDB_ENTITY:-}"
 VRAM_HEADROOM_MB="${VRAM_HEADROOM_MB:-15000}"
 NO_AUTO_COMPACTION="${NO_AUTO_COMPACTION:-false}"
 
-CONTAINER_IMAGE="${CONTAINER_IMAGE:-cooperbench_v0.sqsh}"
-CONTAINER_NAME="${CONTAINER_NAME:-cooperbench_v0}"
+CONTAINER_IMAGE="${CONTAINER_IMAGE:-cooperbench_v1.sqsh}"
+CONTAINER_NAME="${CONTAINER_NAME:-cooperbench_v1}"
 WORKSPACE_SRC="${WORKSPACE_SRC:-/dss/dssfs04/lwp-dss-0002/pn72yi/pn72yi-dss-0000/ge56heh2}"
 MODEL_PATH="${MODEL_PATH:-/workspace/.cache/llama_cache/Qwen_Qwen3.5-27B-Q4_K_M.gguf}"
 LLAMA_SERVER_PATH="${LLAMA_SERVER_PATH:-}"
@@ -85,15 +87,13 @@ LLAMA_SERVER_PORT="${LLAMA_SERVER_PORT:-8050}"
 LLAMA_SERVER_CTX="${LLAMA_SERVER_CTX:-65536}"
 COOPERBENCH_DIR="${COOPERBENCH_DIR:-/workspace/CooperBench}"
 
+# AGENT_CONFIG is resolved inside the container (needs COOPERBENCH_DIR to be available),
+# so pass it as a pattern string and resolve it in the inner script.
+AGENT_CONFIG="${AGENT_CONFIG:-}"
+
 LLAMA_CPP_BASE_URL="http://localhost:${LLAMA_SERVER_PORT}/v1"
 LLAMA_CPP_API_KEY="local-llama-cpp"
 LLAMA_CPP_MODEL="openai/Qwen3.6-27B-Q4_K_M.gguf"
-
-FORCE_FLAG=""
-if [ "$FORCE" = "true" ]; then FORCE_FLAG="--force"; fi
-
-NO_AUTO_COMPACTION_FLAG=""
-if [ "$NO_AUTO_COMPACTION" = "true" ]; then NO_AUTO_COMPACTION_FLAG="--no-auto-compaction"; fi
 
 WANDB_ARGS=""
 if [ -n "$WANDB_PROJECT" ]; then WANDB_ARGS="$WANDB_ARGS --wandb-project $WANDB_PROJECT"; fi
@@ -105,6 +105,7 @@ header "SLURM enroot CooperBench job"
 log "job id:     ${SLURM_JOB_ID:-?}"
 log "node:       ${SLURMD_NODENAME:-?}"
 log "gpus:       ${SLURM_GPUS:-1}"
+log "setting:    $SETTING"
 log "subset:     $SUBSET"
 log "concurrency: ${CONCURRENCY:-auto}"
 log "backend:    $BACKEND"
@@ -112,6 +113,11 @@ log "workspace:  $WORKSPACE_SRC"
 log "model:      $MODEL_PATH"
 
 mkdir -p logs/slurm
+
+if [[ "$SETTING" != "solo" && "$SETTING" != "coop" ]]; then
+    err "SETTING must be 'solo' or 'coop', got: $SETTING"
+    exit 1
+fi
 
 if ! command -v enroot &>/dev/null; then
     err "enroot not found in PATH — load the enroot module: module load enroot"
@@ -126,7 +132,7 @@ if [ -f "$CONTAINER_IMAGE" ]; then
         enroot create --name "$CONTAINER_NAME" "$CONTAINER_IMAGE"
         log "container '$CONTAINER_NAME' created"
     else
-        log "container '$CONTAINER_NAME' already exists"
+        log "container '$CONTAINER_NAME' already exists, skipping import"
     fi
 elif enroot list 2>/dev/null | grep -q "^${CONTAINER_NAME}\b"; then
     log "found existing enroot container '$CONTAINER_NAME'"
@@ -134,8 +140,8 @@ else
     err "container image '$CONTAINER_IMAGE' not found and"
     err "enroot container '$CONTAINER_NAME' not in 'enroot list'."
     err ""
-    err "Create it first:   enroot create cooperbench_v0.sqsh"
-    err "Or from registry:  enroot import docker://your-registry/cooperbench:v0"
+    err "Create it first:   enroot create --name cooperbench_v1 cooperbench_v1.sqsh"
+    err "Or from registry:  enroot import docker://your-registry/cooperbench:v1"
     exit 1
 fi
 
@@ -146,10 +152,9 @@ fi
 log "workspace mount: $WORKSPACE_SRC → /workspace"
 
 # ── Build the inner container script ───────────────────────────────────
-# This entire script runs inside ONE enroot start invocation so that the
-# llama-server stays alive for the whole benchmark.  We use a quoted
-# heredoc to prevent outer-shell variable expansion — all values are
-# passed via environment variables (-e flags on enroot start).
+# Runs inside ONE enroot invocation so llama-server survives the full
+# benchmark.  Quoted heredoc prevents outer-shell expansion — all values
+# arrive as environment variables via enroot -e flags.
 
 INNER_SCRIPT=$(cat <<'ENDOFSCRIPT'
 set -euo pipefail
@@ -165,20 +170,68 @@ warn()   { echo -e "${YELLOW}[inner]${NC} $(date '+%H:%M:%S') $*"; }
 err()    { echo -e "${RED}[inner]${NC} $(date '+%H:%M:%S') $*"; }
 header() { echo -e "\n${CYAN}━━━ $* ━━━${NC}\n"; }
 
+# Resolve AGENT_CONFIG now that COOPERBENCH_DIR is set
+if [ -z "${AGENT_CONFIG:-}" ]; then
+    AGENT_CONFIG="${COOPERBENCH_DIR}/src/cooperbench/agents/llama_cpp/config/enroot_hpc.yaml"
+fi
+
 # ── Cleanup trap ───────────────────────────────────────────────────────
 
 LLAMA_PID=""
+PODMAN_PID=""
 cleanup() {
     local ec=$?
     if [ -n "$LLAMA_PID" ]; then
         kill "$LLAMA_PID" 2>/dev/null || true
         log "stopped llama-server (pid=$LLAMA_PID)"
     fi
+    if [ -n "$PODMAN_PID" ]; then
+        kill "$PODMAN_PID" 2>/dev/null || true
+        log "stopped Podman socket service (pid=$PODMAN_PID)"
+    fi
     exit $ec
 }
 trap cleanup EXIT
 
-# ── Step 1: start llama-server ─────────────────────────────────────────
+# ── Step 1: start Podman socket ────────────────────────────────────────
+# Rootful Podman nested inside Enroot.  DOCKER_HOST is already set via
+# enroot -e, but start the service here so it's definitely alive.
+
+header "Starting rootful Podman socket"
+
+mkdir -p /run/podman
+nohup podman system service -t 0 unix:///run/podman/podman.sock \
+    > /tmp/podman-service.log 2>&1 &
+PODMAN_PID=$!
+export DOCKER_HOST=unix:///run/podman/podman.sock
+export MSWEA_DOCKER_EXECUTABLE=podman
+
+log "Podman service pid: $PODMAN_PID"
+
+# Wait for socket to appear
+for i in $(seq 1 20); do
+    if [ -S /run/podman/podman.sock ]; then
+        log "Podman socket ready after ${i}s"
+        break
+    fi
+    sleep 1
+done
+if [ ! -S /run/podman/podman.sock ]; then
+    err "Podman socket not available after 20s"
+    err "Podman service log:"
+    cat /tmp/podman-service.log 2>/dev/null || true
+    exit 1
+fi
+
+# Smoke-test the socket
+if ! podman info --log-level=error >/dev/null 2>&1; then
+    err "podman info failed — rootful Podman may not be configured correctly"
+    cat /tmp/podman-service.log 2>/dev/null || true
+    exit 1
+fi
+log "Podman smoke-test passed"
+
+# ── Step 2: start llama-server ─────────────────────────────────────────
 
 header "Starting llama-server"
 
@@ -199,7 +252,7 @@ fi
 
 if [ -z "${LLAMA_SERVER_PATH:-}" ] || [ ! -x "$LLAMA_SERVER_PATH" ]; then
     err "llama-server binary not found inside container"
-    err "Set LLAMA_SERVER_PATH in the sbatch script or export it."
+    err "Set LLAMA_SERVER_PATH in the sbatch --export or as a default in this script."
     exit 1
 fi
 
@@ -234,7 +287,7 @@ for i in $(seq 1 60); do
     if curl -sf -H "Authorization: Bearer $LLAMA_CPP_API_KEY" \
        "http://localhost:${LLAMA_SERVER_PORT}/v1/models" >/dev/null 2>&1; then
         READY=true
-        log "llama-server ready after ${i}s"
+        log "llama-server ready after $((i * 2))s"
         break
     fi
     sleep 2
@@ -247,7 +300,7 @@ if ! $READY; then
     exit 1
 fi
 
-# ── Step 2: prepare benchmark (optional) ───────────────────────────────
+# ── Step 3: prepare benchmark (optional) ───────────────────────────────
 
 if [ "${SKIP_PREPARE:-false}" != "true" ]; then
     header "Preparing benchmark"
@@ -284,7 +337,7 @@ else
     cd "$COOPERBENCH_DIR"
 fi
 
-# ── Step 3: gather server info + auto-configure ────────────────────────
+# ── Step 4: gather server info + auto-configure ────────────────────────
 
 header "Gathering server info"
 
@@ -309,12 +362,12 @@ kv_budget   = total_gb - model_gb
 tasks       = int(kv_budget / kv_gb) if kv_gb > 0 else 1
 print(max(1, min(tasks, 8)))
 ")
-        log "auto concurrency: $CONCURRENCY_VAL  (GPU ${GPU_VRAM_MB} MiB, model $(python3 -c "print(f'${SERVER_SIZE}/1e9:.1f')") GB)"
-    elif [ "$GPU_VRAM_MB" -gt 160000 ]; then
+        log "auto concurrency: $CONCURRENCY_VAL  (GPU ${GPU_VRAM_MB} MiB)"
+    elif [ "${GPU_VRAM_MB:-0}" -gt 160000 ]; then
         CONCURRENCY_VAL=8
-    elif [ "$GPU_VRAM_MB" -gt 80000 ]; then
+    elif [ "${GPU_VRAM_MB:-0}" -gt 80000 ]; then
         CONCURRENCY_VAL=6
-    elif [ "$GPU_VRAM_MB" -gt 40000 ]; then
+    elif [ "${GPU_VRAM_MB:-0}" -gt 40000 ]; then
         CONCURRENCY_VAL=2
     else
         CONCURRENCY_VAL=1
@@ -327,109 +380,72 @@ if [ "${NO_AUTO_COMPACTION:-false}" != "true" ] && [ -z "${LLAMA_CPP_COMPACTION_
     log "auto compaction trigger: $LLAMA_CPP_COMPACTION_TRIGGER (60% of $SERVER_CTX)"
 fi
 
-# Check dataset
 if [ ! -d "dataset" ] || [ -z "$(ls -A dataset 2>/dev/null)" ]; then
     warn "dataset not found — run without SKIP_PREPARE=true first"
 fi
 
-# ── Step 4: run benchmarks ─────────────────────────────────────────────
+# ── Step 5: run benchmark ──────────────────────────────────────────────
+
+FORCE_FLAG=""
+if [ "${FORCE:-false}" = "true" ]; then FORCE_FLAG="--force"; fi
+
+RUN_NAME="${SETTING}-lc-qwen3.6-27b-${SUBSET}"
+header "${SETTING} benchmark: $RUN_NAME"
 
 echo ""
 log "Benchmark configuration"
+log "  setting:     $SETTING"
 log "  server:      $LLAMA_CPP_BASE_URL"
 log "  model:       $LLAMA_CPP_MODEL"
 log "  subset:      $SUBSET"
 log "  concurrency: $CONCURRENCY_VAL"
 log "  backend:     $BACKEND"
+log "  agent-config: $AGENT_CONFIG"
 log "  force:       ${FORCE:-false}"
 echo ""
 
-# ── Solo benchmark ──
+uv run cooperbench run \
+    -n "$RUN_NAME" \
+    --setting "$SETTING" \
+    -s "$SUBSET" \
+    -m "$LLAMA_CPP_MODEL" \
+    -a llama_cpp \
+    -c "$CONCURRENCY_VAL" \
+    --backend "$BACKEND" \
+    --agent-config "$AGENT_CONFIG" \
+    ${FORCE_FLAG:-} \
+    ${WANDB_ARGS:-}
 
-if [ "${COOP_ONLY:-false}" != "true" ]; then
-    RUN_NAME="solo-lc-qwen3.6-27b-${SUBSET}"
-    header "Solo benchmark: $RUN_NAME"
-
-    uv run cooperbench run \
-        -n "$RUN_NAME" \
-        --setting solo \
-        -s "$SUBSET" \
-        -m "$LLAMA_CPP_MODEL" \
-        -a llama_cpp \
-        -c "$CONCURRENCY_VAL" \
-        --backend "$BACKEND" \
-        ${FORCE_FLAG:-} \
-        ${WANDB_ARGS:-}
-
-    log "Solo benchmark complete → logs/$RUN_NAME/solo/"
-fi
-
-# ── Coop benchmark ──
-
-if [ "${SOLO_ONLY:-false}" != "true" ]; then
-    RUN_NAME="coop-lc-qwen3.6-27b-${SUBSET}"
-    header "Coop benchmark: $RUN_NAME"
-
-    uv run cooperbench run \
-        -n "$RUN_NAME" \
-        --setting coop \
-        -s "$SUBSET" \
-        -m "$LLAMA_CPP_MODEL" \
-        -a llama_cpp \
-        -c "$CONCURRENCY_VAL" \
-        --backend "$BACKEND" \
-        ${FORCE_FLAG:-} \
-        ${WANDB_ARGS:-}
-
-    log "Coop benchmark complete → logs/$RUN_NAME/coop/"
-fi
+log "${SETTING} benchmark complete → logs/$RUN_NAME/${SETTING}/"
 
 # ── Summary ──
 
 header "Benchmark complete"
 
-if [ "${COOP_ONLY:-false}" != "true" ]; then
-    SOLO_LOG="logs/solo-lc-qwen3.6-27b-${SUBSET}/solo"
-    if [ -f "$SOLO_LOG/summary.json" ]; then
-        python3 -c "
+LOG_DIR="logs/${RUN_NAME}/${SETTING}"
+if [ -f "$LOG_DIR/summary.json" ]; then
+    python3 -c "
 import json
-with open('$SOLO_LOG/summary.json') as f:
+with open('$LOG_DIR/summary.json') as f:
     s = json.load(f)
-print(f'[solo] {s.get(\"completed\",0)} completed, {s.get(\"failed\",0)} failed, {s.get(\"skipped\",0)} skipped')
+print(f'[${SETTING}] {s.get(\"completed\",0)} completed, {s.get(\"failed\",0)} failed, {s.get(\"skipped\",0)} skipped')
 e = s.get('eval', {})
 if e:
     print(f'  eval: {e.get(\"passed\",0)} passed, {e.get(\"failed\",0)} failed ({e.get(\"pass_rate\",0)*100:.0f}%)')
 " || true
-    fi
-fi
-
-if [ "${SOLO_ONLY:-false}" != "true" ]; then
-    COOP_LOG="logs/coop-lc-qwen3.6-27b-${SUBSET}/coop"
-    if [ -f "$COOP_LOG/summary.json" ]; then
-        python3 -c "
-import json
-with open('$COOP_LOG/summary.json') as f:
-    s = json.load(f)
-print(f'[coop] {s.get(\"completed\",0)} completed, {s.get(\"failed\",0)} failed, {s.get(\"skipped\",0)} skipped')
-e = s.get('eval', {})
-if e:
-    print(f'  eval: {e.get(\"passed\",0)} passed, {e.get(\"failed\",0)} failed ({e.get(\"pass_rate\",0)*100:.0f}%)')
-" || true
-    fi
 fi
 ENDOFSCRIPT
 )
 
 # ── Launch: single enroot invocation for the full workflow ─────────────
-# Everything runs inside one enroot container so the llama-server
-# background process survives for the entire benchmark.
 
 header "Launching enroot container"
 
-# shellcheck disable=SC2086
 enroot start --root --rw \
     -e HF_HOME=/workspace/.cache/hf \
     -e LLAMA_CACHE=/workspace/.cache/llama_cache \
+    -e DOCKER_HOST=unix:///run/podman/podman.sock \
+    -e MSWEA_DOCKER_EXECUTABLE=podman \
     -e LLAMA_SERVER_PATH="$LLAMA_SERVER_PATH" \
     -e LLAMA_SERVER_PORT="$LLAMA_SERVER_PORT" \
     -e LLAMA_SERVER_CTX="$LLAMA_SERVER_CTX" \
@@ -438,13 +454,12 @@ enroot start --root --rw \
     -e LLAMA_CPP_MODEL="$LLAMA_CPP_MODEL" \
     -e MODEL_PATH="$MODEL_PATH" \
     -e COOPERBENCH_DIR="$COOPERBENCH_DIR" \
+    -e AGENT_CONFIG="$AGENT_CONFIG" \
+    -e SETTING="$SETTING" \
     -e SUBSET="$SUBSET" \
     -e CONCURRENCY="$CONCURRENCY" \
-    -e SOLO_ONLY="$SOLO_ONLY" \
-    -e COOP_ONLY="$COOP_ONLY" \
     -e SKIP_PREPARE="$SKIP_PREPARE" \
     -e FORCE="$FORCE" \
-    -e FORCE_FLAG="$FORCE_FLAG" \
     -e BACKEND="$BACKEND" \
     -e VRAM_HEADROOM_MB="$VRAM_HEADROOM_MB" \
     -e NO_AUTO_COMPACTION="$NO_AUTO_COMPACTION" \
@@ -455,4 +470,4 @@ enroot start --root --rw \
     "$CONTAINER_NAME" \
     bash -c "$INNER_SCRIPT"
 
-header "Job ${SLURM_JOB_ID:-?} complete"
+header "Job ${SLURM_JOB_ID:-?} ($SETTING) complete"

@@ -175,6 +175,15 @@ class LlamaCppRunner:
         if backend == "docker":
             from cooperbench.agents.mini_swe_agent_v2.environments.docker import DockerEnvironment
 
+            # Apply run_args / network from YAML environment config so that
+            # per-deployment overrides (e.g. host networking on Enroot/HPC)
+            # can be set via --agent-config without editing source.
+            if env_cfg.get("run_args") is not None:
+                env_kwargs["run_args"] = list(env_cfg["run_args"])
+            if env_cfg.get("network") is not None:
+                env_kwargs["network"] = env_cfg["network"]
+            # git_network from the harness-passed config dict (coop infra) takes
+            # precedence over env_cfg.network if both are set.
             if config and config.get("git_network"):
                 env_kwargs["network"] = config["git_network"]
             if team_session is not None:
