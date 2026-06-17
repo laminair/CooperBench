@@ -65,7 +65,7 @@ err()  { echo -e "${RED}[llama-serve]${NC} $*"; }
 
 # ── Find llama-server binary ──────────────────────────────────────────
 
-LLAMA_SERVER=""
+LLAMA_SERVER="/workspace/llama.cpp/build/bin/llama-server"
 
 # Check common locations
 for candidate in \

@@ -104,6 +104,17 @@ class DockerBackend:
             remove=False,
             # Set timeout via stop_signal behavior (container can be stopped)
             stop_signal="SIGTERM",
+            # NOTE: Podman is running nested inside an Enroot container on an
+            # HPC node. Enroot blocks setns/CLONE_NEWNET for any non-host
+            # network namespace (bridge network *creation* succeeds, but
+            # *attaching* a container fails with "netavark: setns: Operation
+            # not permitted" regardless of rootful/rootless). host networking
+            # is the only mode that works here.
+            network_mode="host",
+            # Nested devpts mount conflicts with the outer container's
+            # existing /dev/pts; bind-mount the host's instead to avoid
+            # crun's "mount devpts: Invalid argument" error.
+            mounts=[docker.types.Mount(target="/dev/pts", source="/dev/pts", type="bind")],
         )
 
         sandbox = DockerSandbox(container, workdir, timeout)
