@@ -102,7 +102,7 @@ fi
 
 # Quick Docker SDK check
 log "checking Docker SDK connectivity..."
-python3 -c "
+uv run python3 -c "
 import docker, sys
 try:
     c = docker.from_env()
@@ -198,7 +198,7 @@ YAML
 # Merge enroot_hpc overrides first, then smoke overrides on top
 # (enroot_hpc sets run_args; smoke sets step_limit)
 MERGED_CONFIG=$(mktemp /tmp/smoke_merged_XXXX.yaml)
-python3 - "$AGENT_CONFIG" "$SMOKE_CONFIG" "$MERGED_CONFIG" <<'PY'
+uv run python3 - "$AGENT_CONFIG" "$SMOKE_CONFIG" "$MERGED_CONFIG" <<'PY'
 import sys, yaml
 base = {}
 for src in sys.argv[1:3]:
