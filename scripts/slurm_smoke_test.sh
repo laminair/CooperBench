@@ -12,6 +12,7 @@
 
 # ── SLURM directives ────────────────────────────────────────────────────
 #SBATCH --job-name=cb-smoke
+#SBATCH --partition=lrz-hgx-h100-94x4 
 #SBATCH --gpus=1
 #SBATCH --time=01:15:00
 #SBATCH --output=logs/slurm/%j_smoke.out

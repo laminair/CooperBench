@@ -42,13 +42,10 @@
 
 # ── SLURM directives ────────────────────────────────────────────────────
 #SBATCH --job-name=cooperbench
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --partition=lrz-hgx-h100-94x4
 #SBATCH --gpus=1
-#SBATCH --cpus-per-task=16
-#SBATCH --time=24:00:00
+#SBATCH --time=08:00:00
 #SBATCH --output=logs/slurm/%j_%x_%a.out
-#SBATCH --error=logs/slurm/%j_%x_%a.err
 
 set -euo pipefail
 
