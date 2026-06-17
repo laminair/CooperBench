@@ -15,7 +15,7 @@
 #SBATCH --partition=lrz-hgx-h100-94x4 
 #SBATCH --gpus=1
 #SBATCH --time=01:15:00
-#SBATCH --output=logs/slurm/%j_smoke.out
+#SBATCH --output=%j_smoke.out
 
 set -euo pipefail
 
@@ -46,8 +46,6 @@ header "CooperBench SLURM smoke test"
 log "job id:  ${SLURM_JOB_ID:-?}"
 log "node:    ${SLURMD_NODENAME:-?}"
 log "image:   $CONTAINER_NAME"
-
-mkdir -p logs/slurm
 
 if ! command -v enroot &>/dev/null; then
     err "enroot not found — module load enroot"

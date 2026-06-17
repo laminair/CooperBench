@@ -45,7 +45,7 @@
 #SBATCH --partition=lrz-hgx-h100-94x4
 #SBATCH --gpus=1
 #SBATCH --time=08:00:00
-#SBATCH --output=logs/slurm/%j_%x_%a.out
+#SBATCH --output=%j_%x.out
 
 set -euo pipefail
 
@@ -111,8 +111,6 @@ log "concurrency: ${CONCURRENCY:-auto}"
 log "backend:    $BACKEND"
 log "workspace:  $WORKSPACE_SRC"
 log "model:      $MODEL_PATH"
-
-mkdir -p logs/slurm
 
 if [[ "$SETTING" != "solo" && "$SETTING" != "coop" ]]; then
     err "SETTING must be 'solo' or 'coop', got: $SETTING"
