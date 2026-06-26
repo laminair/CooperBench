@@ -29,6 +29,7 @@ pip install -e ".[dev]"
 - Python 3.12+
 - **Execution Backend** (choose one):
   - [Modal](https://modal.com) (default, cloud-based)
+  - [Vast.ai](https://vast.ai) (recommended for local-model benchmarks — see [docs/VASTAI.md](docs/VASTAI.md))
   - [GCP](https://cloud.google.com) (Google Cloud Platform)
   - Docker (local execution)
 - Redis (for inter-agent communication in coop mode)
@@ -47,7 +48,35 @@ OPENAI_API_KEY=your_key
 GEMINI_API_KEY=your_key
 ```
 
-#### Option 2: GCP (Recommended for Scale)
+#### Option 2: Vast.ai (recommended for local-model benchmarks)
+
+Run CooperBench on a rented Vast.ai GPU against a vLLM-served local
+model.  The `claude_code` agent talks to vLLM's native Anthropic
+`/v1/messages` endpoint — no proxy, no translation layer.
+
+1. Build and push the image (one-time):
+
+   ```bash
+   docker build -f Dockerfile.vastai -t her3ert/cooperbench-vastai:0.0.20 .
+   docker push  her3ert/cooperbench-vastai:0.0.20
+   ```
+
+2. Launch a Vast.ai instance with that image and **Docker Socket: ON**.
+
+3. SSH in and run the bootstrap:
+
+   ```bash
+   cd /opt/cooperbench
+   bash scripts/setup_vastai.sh
+   bash scripts/prepare_vastai_benchmark.sh
+   bash scripts/launch_vastai_benchmark.sh
+   ```
+
+See [docs/VASTAI.md](docs/VASTAI.md) for the full guide (tuning,
+troubleshooting, and the `mini_swe_agent_v2` fallback when you can't
+install the Claude Code CLI).
+
+#### Option 3: GCP (Recommended for Scale)
 
 **Prerequisites**: Install [gcloud CLI](https://cloud.google.com/sdk/docs/install) first
 - macOS: `brew install google-cloud-sdk`
@@ -68,6 +97,14 @@ cooperbench run --backend gcp -s lite
 **Also needed**: Redis and LLM API keys (same as Option 1)
 
 See [GCP Setup Guide](docs/GCP_SETUP.md) for detailed instructions.
+
+#### Option 4: Docker (local)
+
+```bash
+# Install cooperbench and run a benchmark directly on a Docker-enabled host.
+# The benchmark spawns per-task agent containers via the local Docker daemon.
+cooperbench run -n my-local -r llama_index_task -m gpt-4o --backend docker
+```
 
 ### Dataset
 
@@ -185,6 +222,26 @@ uv run harbor run -p datasets/cooperbench --agent oracle -e modal \
 ```
 
 See the [Harbor CooperBench adapter](https://github.com/harbor-framework/harbor/tree/main/adapters/cooperbench) for full documentation.
+
+## Running against a self-hosted model (vLLM)
+
+vLLM v0.17.1+ exposes the Anthropic `/v1/messages` API natively, so
+the `claude_code` agent can point straight at it — no LiteLLM proxy,
+no translation layer:
+
+```bash
+cooperbench run --base-url http://localhost:8000 --auth-token dummy \
+    -m Qwen/Qwen3.5-9B -a claude_code --setting coop -s lite -c 2
+```
+
+The adapter rewrites `localhost` → `host.docker.internal` for agent
+containers, sets `CLAUDE_CODE_ATTRIBUTION_HEADER=0` to keep vLLM's
+KV cache warm, and applies a small-context profile when the model
+name contains "qwen".  See [docs/QWEN_LOCAL.md](docs/QWEN_LOCAL.md)
+for the full recipe.
+
+For a turnkey Vast.ai deployment (one image, one bootstrap script,
+no manual setup), see [docs/VASTAI.md](docs/VASTAI.md).
 
 ## CLI Reference
 

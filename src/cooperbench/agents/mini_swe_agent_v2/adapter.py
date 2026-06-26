@@ -163,8 +163,8 @@ class MiniSweAgentV2Runner:
             from cooperbench.agents.mini_swe_agent_v2.environments.docker import DockerEnvironment
 
             # Apply run_args / network from YAML environment config so that
-            # per-deployment overrides (e.g. host networking on Enroot/HPC)
-            # can be set via --agent-config without editing source.
+            # per-deployment overrides (e.g. host networking) can be set via
+            # --agent-config without editing source.
             if env_cfg.get("run_args") is not None:
                 env_kwargs["run_args"] = list(env_cfg["run_args"])
             if env_cfg.get("network") is not None:

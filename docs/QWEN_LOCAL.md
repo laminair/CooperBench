@@ -9,6 +9,11 @@ that same API natively — so claude-code can talk to a vLLM server
 claude-code (Anthropic /v1/messages) ───► vLLM /v1/messages
 ```
 
+> **Deploying on rented GPUs?** See [docs/VASTAI.md](VASTAI.md) for the
+> turnkey Docker image + bootstrap script that bundles vllm + claude-code
+> + cooperbench for Vast.ai.  This file documents the underlying recipe
+> in case you're running on a different host.
+
 ## Prerequisites
 
 - Docker (CooperBench runs each task in a container)

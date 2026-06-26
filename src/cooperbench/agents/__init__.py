@@ -110,8 +110,6 @@ AGENT_SHORTHANDS = {
     "codex": "cx",
     "robophd": "rp",
     "opencode_zen": "oz",
-    "ollama": "ol",
-    "llama_cpp": "lc",
 }
 
 

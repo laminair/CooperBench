@@ -1,5 +1,15 @@
 # CooperBench Optimization Summary
 
+> **Note**: this document describes tuning decisions made for the
+> llama.cpp / HPC-enroot flow that CooperBench used up to v0.0.19.  The
+> compaction triggers, step limits, and small-context profile values
+> below were carried forward into the v0.0.20 Vast.ai + vLLM
+> deployment (see [docs/VASTAI.md](docs/VASTAI.md)) — the `claude_code`
+> adapter still honors `COOPERBENCH_COMPACTION_TRIGGER` and the
+> small-context model profile.  Hardware sizing tables and
+> `scripts/launch_llama_cpp_benchmark.sh` references are retained for
+> historical context only.
+
 ## Changes Implemented
 
 ### Phase 1: Context Window Management (Targets 12 failures)

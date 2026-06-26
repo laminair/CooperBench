@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Enroot / SLURM / rootful-Podman HPC flow.** The previous local-model
+  path ran CooperBench inside an enroot container with a rootful Podman
+  socket, hosted on HPC (LRZ).  The on-host pieces are gone:
+  - `scripts/slurm_enroot_benchmark.sh`, `scripts/slurm_smoke_test.sh`,
+    `scripts/smoke_test.sh` (the enroot-podman-specific smoke test)
+  - `src/cooperbench/agents/llama_cpp/config/enroot_hpc.yaml`,
+    `src/cooperbench/agents/mini_swe_agent_v2/config/enroot_hpc.yaml`
+  - Stale `# NOTE: Podman is nested inside an Enroot container…` and
+    `…(e.g. host networking on Enroot/HPC)…` comments in
+    `eval/backends/docker.py`,
+    `agents/mini_swe_agent_v2/connectors/git_servers/docker.py`, and
+    `agents/mini_swe_agent_v2/adapter.py`.  Replaced with neutral notes
+    that explain why `network_mode="host"` is the default (works on any
+    Docker host, including CI sandboxes and Vast.ai VMs).
+- **`llama_cpp` and `ollama` agent adapters** and their scripts
+  (`serve_llama_cpp.sh`, `prepare_llama_cpp_benchmark.sh`,
+  `launch_llama_cpp_benchmark.sh`, `smoke_test_llama_cpp.sh`,
+  `prepare_ollama_benchmark.sh`, `launch_ollama_benchmark.sh`,
+  `smoke_test_ollama.sh`).  Both were litellm + OpenAI-compatible
+  shims against local servers; the Vast.ai path uses
+  `claude_code` + vLLM's native Anthropic `/v1/messages` instead, which
+  is faster, smaller, and avoids the LiteLLM version-drift class of bugs
+  that drove earlier `0.0.18` cleanups.
+- **`BENCHMARK_LLAMA_CPP.md`** — replaced by `docs/VASTAI.md`.
+
+### Added
+
+- **Vast.ai deployment path.** One image, one bootstrap script, no
+  nested containers.
+  - `Dockerfile.vastai` — CUDA 13.2 + vLLM 0.17.1 + Claude Code CLI
+    (pinned via the official curl installer) + CooperBench (editable
+    install).  Defaults to `cyankiwi/Qwen3.6-27B-AWQ-INT4` as the
+    served model.
+  - `scripts/setup_vastai.sh` — idempotent VM bootstrap: verifies the
+    Docker socket, starts `cb-redis` and `cb-vllm` as sidecar
+    containers, waits for `/v1/models` to respond, pre-pulls the
+    dataset's Docker images.
+  - `scripts/prepare_vastai_benchmark.sh` — `uv sync` + dataset
+    download + a 32-token ping through `/v1/messages` to confirm the
+    full chain.
+  - `scripts/launch_vastai_benchmark.sh` — auto-tunes concurrency from
+    VRAM/ctx, auto-sets `COOPERBENCH_COMPACTION_TRIGGER` to 60% of
+    context, and runs `cooperbench run --base-url
+    http://host.docker.internal:8000 --auth-token dummy -a claude_code`.
+  - `scripts/smoke_test_vastai.sh` — single-task sanity check
+    (capped at 8 turns; ~10–20 min).
+  - `scripts/serve_vllm.sh` — raw `vllm serve` launcher (called by
+    `setup_vastai.sh` inside the `cb-vllm` container; also runnable
+    standalone).
+  - `docs/VASTAI.md` — provisioning, per-GPU concurrency table,
+    troubleshooting, and a `mini_swe_agent_v2` fallback for when the
+    Claude Code CLI can't be installed.
+  - `docs/QWEN_LOCAL.md` — keeps the generic vLLM/`claude_code`
+    recipe; the Vast.ai-specific doc points at it for vLLM flag
+    details.
+
 ## [0.0.19] - 2026-05-25
 
 ### Fixed

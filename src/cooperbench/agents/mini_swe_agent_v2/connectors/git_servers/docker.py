@@ -92,13 +92,10 @@ def _ensure_shared_infra(client: docker.DockerClient, logger: logging.Logger):
                 _IMAGE_TAG,
                 name=_CONTAINER_NAME,
                 detach=True,
-                # NOTE: bridge networking (network=_NETWORK_NAME) doesn't work
-                # here — Podman is nested inside an Enroot container on an HPC
-                # node, and Enroot blocks setns/CLONE_NEWNET for any non-host
-                # network namespace. Confirmed: bridge network *creation*
-                # succeeds, but *attaching* a container to it fails with
-                # "netavark: setns: Operation not permitted", rootful or
-                # rootless. host networking is the only mode that works.
+                # host networking: keeps the daemon reachable from any agent
+                # container on the same host without depending on the bridge
+                # network (some Docker hosts, e.g. Vast.ai VMs, won't allow
+                # agents to attach to user-defined bridges at run time).
                 network_mode="host",
                 volumes={_VOLUME_NAME: {"bind": "/git", "mode": "rw"}},
                 restart_policy={"Name": "unless-stopped"},
@@ -167,9 +164,9 @@ class DockerGitServer:
 
         return cls(
             run_id=run_id,
-            # With host networking, the git daemon binds directly to the
-            # shared (Enroot) host network namespace, so other host-networked
-            # containers reach it via loopback rather than container-name DNS.
+            # With host networking, the git daemon binds the host's loopback,
+            # so other host-networked containers reach it via 127.0.0.1
+            # rather than container-name DNS.
             hostname="127.0.0.1",
             port=_PORT,
             network_name=_NETWORK_NAME,
