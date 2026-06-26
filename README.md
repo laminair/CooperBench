@@ -57,8 +57,8 @@ model.  The `claude_code` agent talks to vLLM's native Anthropic
 1. Build and push the image (one-time):
 
    ```bash
-   docker build -f Dockerfile.vastai -t her3ert/cooperbench-vastai:0.0.20 .
-   docker push  her3ert/cooperbench-vastai:0.0.20
+   docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.20 .
+   docker push  ghcr.io/laminair/cooperbench-vastai:0.0.20
    ```
 
 2. Launch a Vast.ai instance with that image and **Docker Socket: ON**.

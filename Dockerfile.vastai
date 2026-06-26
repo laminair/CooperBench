@@ -1,0 +1,106 @@
+# Dockerfile.vastai — CooperBench on Vast.ai
+#
+# One image that bundles everything Vast.ai's custom-image template needs:
+#   - CUDA 13.2 runtime (target GPU: RTX PRO 6000 Blackwell; build host: any CUDA 13.x GPU)
+#   - vLLM 0.17.1+ (serves the local model, exposes Anthropic /v1/messages natively)
+#   - @anthropic-ai/claude-code CLI (pinned; used by the `claude_code` agent)
+#   - CooperBench (editable install from this build context)
+#   - Docker CLI + NVIDIA Container Toolkit (so the container can drive agent containers
+#     via the host's /var/run/docker.sock — required for `--backend docker`)
+#   - Redis (run as a sidecar container by setup_vastai.sh)
+#
+# Build (locally on the workstation, push to GitHub Container Registry):
+#   docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.20 .
+#   docker push   ghcr.io/laminair/cooperbench-vastai:0.0.20
+#
+# If vLLM has no cu132 wheel at build time, swap the first FROM line for:
+#   FROM docker.io/vllm/vllm-openai:v0.23.0
+# The vLLM project's own image bundles the right CUDA + PyTorch; the
+# 13.2 host driver stays forward-compatible with 12.x libraries.
+#
+# If vLLM also lacks Python 3.12 in its image, fall back to the same
+# base image but use `uv venv --python 3.12 /opt/venv` and install via
+# `/opt/venv/bin/pip` (the venv-on-uv fallback we used to use).
+
+FROM docker.io/nvidia/cuda:13.2.0-runtime-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PATH="/root/.local/bin:${PATH}"
+
+# ── System packages ──────────────────────────────────────────────────
+# Ubuntu 24.04 (noble) ships Python 3.12 in the default repos, so we can
+# use the system interpreter directly — no venv, no uv-managed Python.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl git gnupg \
+        python3 python3-pip python3-venv \
+        docker.io \
+        nvidia-container-toolkit \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 --version
+
+# ── uv (Python package manager — used for cooperbench's dep sync) ──
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# ── Claude Code CLI (pinned via official curl installer) ────────────
+# Pin matches the version CooperBench was tested against.  Bump deliberately;
+# the agent code reads the live CLI and is sensitive to schema drift.
+ARG CLAUDE_CODE_VERSION=2.1.186
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_CODE_VERSION}" \
+ && { \
+        echo 'export PATH="/root/.local/bin:${PATH}"'; \
+        echo 'export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1'; \
+    } > /etc/profile.d/claude.sh
+
+# ── vLLM ────────────────────────────────────────────────────────────
+# `pip` picks the cu132 wheel if vLLM publishes one; otherwise pin via
+# `--extra-index-url` or use the vllm/vllm-openai image as the base (see
+# comment at the top of this file).
+ARG VLLM_VERSION=0.23.0
+RUN pip3 install --no-cache-dir --break-system-packages "vllm==${VLLM_VERSION}"
+
+# ── CooperBench (editable from build context) ───────────────────────
+# Drop the [dev] extra for the runtime image: it pulls pytest/mypy/ruff/
+# fakeredis for contributors running tests, and those resolve against
+# vllm's dep tree.  Install them in a dev image with --target or a
+# separate stage if you need to run the test suite inside the container.
+#
+# The three openhands-* packages are vendored under
+# src/cooperbench/agents/openhands_agent_sdk/.  We install them from
+# their local paths first (editable, so conftest-style imports still
+# resolve to the vendored source) and then `pip install -e .` with
+# --no-deps for those three names.  Without the path-based installs
+# pip falls back to PyPI, where newer openhands-sdk versions pull in
+# stricter lmnr pins that conflict with what vllm has already resolved.
+WORKDIR /opt/cooperbench
+COPY . /opt/cooperbench
+RUN pip3 install --no-cache-dir --break-system-packages \
+        -e ./src/cooperbench/agents/openhands_agent_sdk/openhands-sdk \
+        -e ./src/cooperbench/agents/openhands_agent_sdk/openhands-tools \
+        -e ./src/cooperbench/agents/openhands_agent_sdk/openhands-workspace \
+ && pip3 install --no-cache-dir --break-system-packages \
+        -e . \
+        --no-deps \
+ && pip3 install --no-cache-dir --break-system-packages \
+        $(python3 -c "import tomllib, sys; d=tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']; print(' '.join(p for p in d if not p.split('>=')[0].split('==')[0].startswith(('openhands-',))))")
+
+# ── Defaults consumed by scripts/serve_vllm.sh + the claude_code agent ─
+# Override at container start with `docker run -e VLLM_MODEL=... ...`.
+ENV VLLM_PORT=8000 \
+    VLLM_HOST=0.0.0.0 \
+    VLLM_MAX_MODEL_LEN=65536 \
+    VLLM_GPU_MEMORY_UTILIZATION=0.92 \
+    VLLM_QUANTIZATION=awq \
+    VLLM_TOOL_PARSER=qwen3_coder \
+    VLLM_MODEL=cyankiwi/Qwen3.6-27B-AWQ-INT4 \
+    VLLM_SERVED_NAME=qwen3.6-27b-awq-int4 \
+    HF_HOME=/root/.cache/huggingface \
+    COOPERBENCH_DIR=/opt/cooperbench
+
+WORKDIR /workspace
+EXPOSE 8000 6379
+
+CMD ["bash"]
