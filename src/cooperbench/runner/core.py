@@ -261,7 +261,9 @@ def run(
 
     _print_summary(completed, skipped, failed, run_totals["total_cost"], time_info, log_dir / setting, eval_stats)
     if wb.is_active:
-        summary = _build_wandb_summary(run_name, len(tasks), completed, skipped, failed, total_cost, session_time, eval_stats, log_dir)
+        summary = _build_wandb_summary(
+            run_name, len(tasks), completed, skipped, failed, total_cost, session_time, eval_stats, log_dir
+        )
         wb.log_summary(summary)
         wb.finish()
 
@@ -607,7 +609,6 @@ def _run_with_progress(
     return completed, skipped, failed, total_cost, results_list, eval_stats
 
 
-
 def _log_task_to_wandb(wb, result, task_info, eval_result=None):
     """Extract task metrics and log to WandB."""
     if not wb.is_active:
@@ -671,7 +672,9 @@ def _log_task_to_wandb(wb, result, task_info, eval_result=None):
     )
 
 
-def _build_wandb_summary(run_name, total_tasks, completed, skipped, failed, total_cost, total_time, eval_stats, log_dir):
+def _build_wandb_summary(
+    run_name, total_tasks, completed, skipped, failed, total_cost, total_time, eval_stats, log_dir
+):
     """Build a summary dict for wandb from run/eval data."""
     summary = {
         "run_name": run_name,

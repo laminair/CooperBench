@@ -484,7 +484,6 @@ def _run_with_progress(runs: list, eval_run, concurrency: int) -> tuple:
     return passed, failed, errors, skipped, results
 
 
-
 def _log_eval_to_wandb(wb, run_info, eval_result):
     """Log a single evaluation result to WandB."""
     if not wb.is_active:
@@ -516,7 +515,6 @@ def _log_eval_to_wandb(wb, run_info, eval_result):
 
 
 def _save_summary(
-
     log_dir: Path,
     run_name: str,
     total_runs: int,

@@ -199,9 +199,11 @@ class OpenCodeZenRunner:
         # they are re-submitted on the next turn the OpenCode Zen proxy
         # rejects them as unknown fields.
         _original_prepare = model._prepare_messages_for_api
+
         def _strip_provider_fields(messages):
             prepared = _original_prepare(messages)
             return [{k: v for k, v in msg.items() if k != "provider_specific_fields"} for msg in prepared]
+
         model._prepare_messages_for_api = _strip_provider_fields
 
         # Setup git

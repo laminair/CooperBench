@@ -180,9 +180,7 @@ class RoboPhDRunner:
                 if not agent_dir:
                     agent_dir = config.get("agent_dir")
             else:
-                raise ValueError(
-                    f"Agent config path does not exist: {agent_config}"
-                )
+                raise ValueError(f"Agent config path does not exist: {agent_config}")
         if not agent_dir:
             raise ValueError(
                 "RoboPhD adapter requires --agent-config <path> pointing to a "
