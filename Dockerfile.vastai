@@ -27,7 +27,7 @@
 #   docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.21 .
 #   docker push   ghcr.io/laminair/cooperbench-vastai:0.0.21
 
-FROM vllm/vllm-openai:v0.23.0
+FROM docker.io/vllm/vllm-openai:v0.23.0
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
