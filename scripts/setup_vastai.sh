@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
-# setup_vastai.sh — One-shot Vast.ai VM bootstrap for CooperBench.
+# setup_vastai.sh — CooperBench Vast.ai bootstrap.
 #
-# Assumes the Vast.ai template was provisioned with:
+# Assumes the outer cooperbench container was launched on a Vast.ai
+# Virtual Machine (template: "Ubuntu 22.04 VM") with:
+#   -v /var/run/docker.sock:/var/run/docker.sock
+# so we can drive child containers (cb-vllm, cb-redis, per-task agents)
+# from inside this container.  See docs/VASTAI.md §3 for the full
+# docker run command that produces this state.
+#
+# Assumes:
 #   - Docker image:    ghcr.io/laminair/cooperbench-vastai:<tag>   (built from Dockerfile.vastai)
-#   - Docker socket:   /var/run/docker.sock mounted from the host VM
+#   - Docker socket:   /var/run/docker.sock mounted from the VM host
 #   - ≥ 80 GB disk
 #   - GPU: any 24 GB+ NVIDIA (recommended: RTX PRO 6000 Blackwell for the 27B model)
 #
@@ -57,12 +64,17 @@ log "docker:        $(docker --version)"
 if [ ! -S /var/run/docker.sock ]; then
     err "/var/run/docker.sock not present."
     err ""
-    err "Vast.ai template must mount the host's docker socket into the outer"
-    err "container (the 'Docker Socket' / 'Mount Host Docker Socket' option in"
-    err "the Vast.ai launch dialog).  Without it CooperBench cannot launch"
-    err "agent containers from inside the outer container."
+    err "CooperBench needs to launch child containers (cb-vllm, cb-redis,"
+    err "and per-task agent containers) from inside this container.  The"
+    err "Vast.ai template editor's 'Docker Options' field does NOT support"
+    err "volume mounts, so a plain Vast.ai Docker instance can't expose the"
+    err "host's docker socket."
     err ""
-    err "Stop the instance, enable the docker-socket mount, and relaunch."
+    err "Run cooperbench-vastai as a container INSIDE a Vast.ai Virtual"
+    err "Machine (template: 'Ubuntu 22.04 VM').  The VM has Docker installed,"
+    err "and you can launch the cooperbench container on it with"
+    err "  -v /var/run/docker.sock:/var/run/docker.sock"
+    err "See docs/VASTAI.md §3 for the exact docker run command."
     exit 1
 fi
 log "docker socket: /var/run/docker.sock ✓"

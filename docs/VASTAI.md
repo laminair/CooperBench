@@ -17,10 +17,20 @@ Vast.ai VM  ─►  outer container (our image)  ─►  cb-vllm  (sidecar)
                                                                 └►  host.docker.internal:8000/v1/messages
 ```
 
-The Vast.ai template mounts `/var/run/docker.sock` from the host VM into
-the outer container, so the cooperbench process inside our image can
-launch agent containers using the same Docker daemon that runs the
-vLLM and Redis sidecars.
+The cooperbench-vastai image runs as a container **inside a Vast.ai Virtual
+Machine (full Linux VM, not a plain Docker instance)**, with the VM's
+own `/var/run/docker.sock` bind-mounted into it.  That gives the
+cooperbench process inside our image a Docker daemon it can drive to
+launch the `cb-vllm` and `cb-redis` sidecars and the per-task agent
+containers.
+
+> **Why a VM, not a plain Vast.ai instance?**  The standard Vast.ai
+> template editor's "Docker Options" field only accepts ports and
+> environment variables — volume mounts are filtered out.  The VM
+> template bypasses that and gives you a real Linux host with Docker
+> pre-installed, so a normal `docker run -v /var/run/docker.sock:…`
+> works.  Vast.ai calls this "nested containerization" and it's the
+> only first-class way to get a host Docker socket on the platform.
 
 ---
 
@@ -55,34 +65,62 @@ forward-compatible.
 
 ---
 
-## 2. Provision the Vast.ai instance
+## 2. Provision a Vast.ai Virtual Machine
 
-In the Vast.ai launch dialog, set:
+CooperBench needs `docker.sock` inside the container, so we can't use a
+plain Vast.ai Docker instance.  Use a **VM template** instead — the
+recommended one is **Ubuntu 22.04 VM** (it ships with Docker
+pre-installed).  Search → filter → rent.
 
 | Field | Value |
 |---|---|
-| **Docker Image** | `ghcr.io/laminair/cooperbench-vastai:0.0.21` |
-| **Docker Socket** | **ON** (mounts `/var/run/docker.sock` from the host) |
+| **Template** | `Ubuntu 22.04 VM` (or any `vastai/kvm:…` template) |
 | **Disk** | ≥ 80 GB (model weights + dataset + pulled images) |
-| **GPU** | Any 24 GB+ NVIDIA; recommend RTX PRO 6000 Blackwell for the 27B model |
-| **On-start script** | `bash /opt/cooperbench/scripts/setup_vastai.sh` |
+| **GPU** | Any 24 GB+ NVIDIA; RTX PRO 6000 Blackwell recommended for the 27B model |
+| **Extra Filters** | `vms_enabled=true` (already set by the VM templates) |
 
-If you don't have a custom-image template yet, save one with these
-fields and reuse it for every run.
+When the VM reports running, get its SSH URL from the instance panel
+and `ssh` in.  The `ubuntu` user has passwordless `sudo`.
+
+> If you don't see any VM-capable machines on the search page, click
+> "Edit" on the Ubuntu 22.04 VM template and confirm the **Extra
+> Filters** field contains `vms_enabled=true` (the official template
+> does, but a saved copy may not).
 
 ---
 
-## 3. First boot
+## 3. Launch cooperbench inside the VM
 
-After Vast.ai reports the instance is up, SSH in (or use the in-browser
-terminal):
+The Ubuntu 22.04 VM is just a host — we still need to start the
+cooperbench-vastai container on it, with the VM's docker socket
+bind-mounted in.  One command from the VM's shell:
 
 ```bash
-# Already running if onstart was set; otherwise:
-bash /opt/cooperbench/scripts/setup_vastai.sh
+docker run -d --name cooperbench \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v /workspace:/workspace \
+    --network host \
+    --gpus all \
+    --restart unless-stopped \
+    --entrypoint bash \
+    ghcr.io/laminair/cooperbench-vastai:0.0.21 \
+    -c 'sleep infinity'
 ```
 
-This script is **idempotent**.  It:
+> The `sleep infinity` is a placeholder so the container stays up; the
+> real work happens via `docker exec`.  `--network host` + `--gpus all`
+> let `cb-vllm` see the GPU and let agent containers reach the host
+> vLLM via `host.docker.internal`.
+
+Open a shell in the container and run the setup:
+
+```bash
+docker exec -it cooperbench bash
+cd /opt/cooperbench
+bash scripts/setup_vastai.sh
+```
+
+`setup_vastai.sh` is **idempotent**.  It:
 
 1. Verifies the docker socket is mounted and the NVIDIA driver + toolkit work.
 2. Pulls our own image (so `cb-vllm` can be re-launched as a copy).

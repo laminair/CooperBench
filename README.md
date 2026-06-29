@@ -61,11 +61,20 @@ model.  The `claude_code` agent talks to vLLM's native Anthropic
    docker push  ghcr.io/laminair/cooperbench-vastai:0.0.21
    ```
 
-2. Launch a Vast.ai instance with that image and **Docker Socket: ON**.
+2. Launch a **Vast.ai Virtual Machine** (template: `Ubuntu 22.04 VM` — a
+   plain Docker instance can't mount the host socket).  SSH in.
 
-3. SSH in and run the bootstrap:
+3. Start the cooperbench container on the VM and run the bootstrap:
 
    ```bash
+   docker run -d --name cooperbench \
+       -v /var/run/docker.sock:/var/run/docker.sock \
+       -v /workspace:/workspace \
+       --network host --gpus all --restart unless-stopped \
+       --entrypoint bash \
+       ghcr.io/laminair/cooperbench-vastai:0.0.21 -c 'sleep infinity'
+
+   docker exec -it cooperbench bash
    cd /opt/cooperbench
    bash scripts/setup_vastai.sh
    bash scripts/prepare_vastai_benchmark.sh
