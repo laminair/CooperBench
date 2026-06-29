@@ -64,7 +64,12 @@ model.  The `claude_code` agent talks to vLLM's native Anthropic
 2. Launch a **Vast.ai Virtual Machine** (template: `Ubuntu 22.04 VM` — a
    plain Docker instance can't mount the host socket).  SSH in.
 
-3. Start the cooperbench container on the VM and run the bootstrap:
+3. Install the NVIDIA container toolkit on the VM host (one-time):
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/laminair/CooperBench/main/scripts/setup_vastai_vm.sh | bash
+   ```
+
+4. Start the cooperbench container on the VM and run the bootstrap:
 
    ```bash
    docker run -d --name cooperbench \

@@ -89,7 +89,35 @@ and `ssh` in.  The `ubuntu` user has passwordless `sudo`.
 
 ---
 
-## 3. Launch cooperbench inside the VM
+## 3. Install the NVIDIA runtime on the VM host
+
+Vast.ai's Ubuntu 22.04 VM image includes Docker, but **not** the
+NVIDIA container toolkit on the host side.  Without it, `docker run
+--gpus all` fails with `could not select device driver "" with
+capabilities: [[gpu]]` — the host dockerd doesn't know which runtime
+to use for GPU passthrough.
+
+Run this once on the VM (it auto-elevates with sudo if needed):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/laminair/CooperBench/main/scripts/setup_vastai_vm.sh | bash
+```
+
+…or copy `scripts/setup_vastai_vm.sh` from this repo to the VM (the
+file is in the cooperbench source on the VM host if you checked it
+out, or download via the URL above) and `bash` it directly.  The
+script is idempotent: it installs `nvidia-container-toolkit`, runs
+`nvidia-ctk runtime configure --runtime=docker`, restarts dockerd,
+and verifies with a `docker run --gpus all nvidia-smi`.
+
+> If you skip this step you'll get the `could not select device
+> driver` error below.  Our container image has the toolkit
+> installed *inside* itself, but the **host** dockerd needs its own
+> config.
+
+---
+
+## 4. Launch cooperbench inside the VM
 
 The Ubuntu 22.04 VM is just a host — we still need to start the
 cooperbench-vastai container on it, with the VM's docker socket
@@ -142,7 +170,7 @@ Anthropic `/v1/messages` endpoint.
 
 ---
 
-## 4. Run the benchmark
+## 5. Run the benchmark
 
 ```bash
 cd /opt/cooperbench
@@ -201,7 +229,7 @@ ctx).  Override with `COOPERBENCH_COMPACTION_TRIGGER=N` or pass
 
 ---
 
-## 5. Fallback: `mini_swe_agent_v2` (no Claude Code CLI)
+## 6. Fallback: `mini_swe_agent_v2` (no Claude Code CLI)
 
 If you can't install the `@anthropic-ai/claude-code` npm package (sandboxed
 networks, no npm registry, etc.) the vLLM endpoint still works against
@@ -240,7 +268,7 @@ sanity checks only; the Claude Code adapter is the recommended path.
 
 ---
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 ### vLLM OOMs at startup
 
@@ -316,7 +344,7 @@ ls -la /var/run/docker.sock     # verify socket mount
 
 ---
 
-## 7. References
+## 8. References
 
 - `Dockerfile.vastai` — the image recipe.
 - `scripts/setup_vastai.sh` — one-shot VM bootstrap.
