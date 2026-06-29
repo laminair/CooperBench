@@ -24,10 +24,17 @@
 #   * Build time drops from ~20 min (vllm pip install) to <2 min.
 #
 # Build & push:
-#   docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.23 .
-#   docker push   ghcr.io/laminair/cooperbench-vastai:0.0.23
+#   docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.24 .
+#   docker push   ghcr.io/laminair/cooperbench-vastai:0.0.24
 
-FROM docker.io/vllm/vllm-openai:v0.23.0
+# Use the explicit CUDA 12.9 variant of the vllm base.  The plain
+# `v0.23.0` tag ships with CUDA 13.x libraries and nvidia-container-cli
+# refuses to start it on hosts whose driver tops out at CUDA 12.9
+# (which includes most Vast.ai hosts, including 4090/4090-D and older
+# Blackwell hosts).  The -cu129 variant requires driver CUDA 12.9+,
+# which every Vast.ai host since 2025 has.  vllm 0.23.0 itself bundles
+# all the runtime CUDA libs in either variant, so the API is identical.
+FROM docker.io/vllm/vllm-openai:v0.23.0-cu129
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \

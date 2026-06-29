@@ -41,8 +41,8 @@ pushed to GitHub Container Registry (ghcr.io):
 
 ```bash
 # From the repo root.
-docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.23 .
-docker push  ghcr.io/laminair/cooperbench-vastai:0.0.23
+docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.24 .
+docker push  ghcr.io/laminair/cooperbench-vastai:0.0.24
 ```
 
 The default baked-in model is `cyankiwi/Qwen3.6-27B-AWQ-INT4`
@@ -54,7 +54,7 @@ at build time:
 docker build -f Dockerfile.vastai \
   --build-arg VLLM_VERSION=0.17.1 \
   --build-arg CLAUDE_CODE_VERSION=2.1.0 \
-  -t ghcr.io/laminair/cooperbench-vastai:0.0.23 .
+  -t ghcr.io/laminair/cooperbench-vastai:0.0.24 .
 ```
 
 If vLLM does not yet publish a cu132 wheel, edit `Dockerfile.vastai` to
@@ -131,7 +131,7 @@ docker run -d --name cooperbench \
     --gpus all \
     --restart unless-stopped \
     --entrypoint bash \
-    ghcr.io/laminair/cooperbench-vastai:0.0.23 \
+    ghcr.io/laminair/cooperbench-vastai:0.0.24 \
     -c 'sleep infinity'
 ```
 
@@ -228,6 +228,7 @@ For the AWQ 27B model (~14 GB) and a 65K context (~6 GB KV / request):
 |---|---|---|
 | RTX 4090 (24 GB) | 1 | 1 |
 | 2× RTX 4090 (48 GB) | 2 | 2 |
+| 4× RTX 4090 / 4090 D (96 GB) | 8 | 8 (capped) |
 | 2× RTX 5090 (64 GB) | 5 | 6 |
 | 4× RTX 5090 (128 GB) | 8 | 8 (capped) |
 | A100 40 GB | 2 | 2 |
@@ -312,7 +313,7 @@ VLLM_MAX_MODEL_LEN=32768 VLLM_GPU_MEMORY_UTILIZATION=0.85 \
 docker run -d --name cb-vllm --network host --gpus all --restart unless-stopped \
     -e VLLM_MAX_MODEL_LEN=32768 -e VLLM_GPU_MEMORY_UTILIZATION=0.85 \
     -v vllm-cache:/root/.cache/huggingface \
-    ghcr.io/laminair/cooperbench-vastai:0.0.23 \
+    ghcr.io/laminair/cooperbench-vastai:0.0.24 \
     bash -c "source /etc/profile.d/claude.sh && /opt/cooperbench/scripts/serve_vllm.sh --bg"
 ```
 
@@ -340,7 +341,7 @@ Either stop the conflicting process (`lsof -i :8000`) or run
 docker rm -f cb-vllm
 VLLM_PORT=8001 docker run -d --name cb-vllm --network host --gpus all \
     -e VLLM_PORT=8001 -v vllm-cache:/root/.cache/huggingface \
-    ghcr.io/laminair/cooperbench-vastai:0.0.23 \
+    ghcr.io/laminair/cooperbench-vastai:0.0.24 \
     bash -c "source /etc/profile.d/claude.sh && /opt/cooperbench/scripts/serve_vllm.sh --bg"
 
 # And point cooperbench at the new port

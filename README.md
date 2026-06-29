@@ -57,8 +57,8 @@ model.  The `claude_code` agent talks to vLLM's native Anthropic
 1. Build and push the image (one-time):
 
    ```bash
-   docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.23 .
-   docker push  ghcr.io/laminair/cooperbench-vastai:0.0.23
+   docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.24 .
+   docker push  ghcr.io/laminair/cooperbench-vastai:0.0.24
    ```
 
 2. Launch a **Vast.ai Virtual Machine** (template: `Ubuntu 22.04 VM` — a
@@ -77,7 +77,7 @@ model.  The `claude_code` agent talks to vLLM's native Anthropic
        -v /workspace:/workspace \
        --network host --gpus all --restart unless-stopped \
        --entrypoint bash \
-       ghcr.io/laminair/cooperbench-vastai:0.0.23 -c 'sleep infinity'
+       ghcr.io/laminair/cooperbench-vastai:0.0.24 -c 'sleep infinity'
 
    docker exec -it cooperbench bash
    cd /opt/cooperbench
