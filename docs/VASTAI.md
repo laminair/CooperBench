@@ -41,8 +41,8 @@ pushed to GitHub Container Registry (ghcr.io):
 
 ```bash
 # From the repo root.
-docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.22 .
-docker push  ghcr.io/laminair/cooperbench-vastai:0.0.22
+docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.23 .
+docker push  ghcr.io/laminair/cooperbench-vastai:0.0.23
 ```
 
 The default baked-in model is `cyankiwi/Qwen3.6-27B-AWQ-INT4`
@@ -54,7 +54,7 @@ at build time:
 docker build -f Dockerfile.vastai \
   --build-arg VLLM_VERSION=0.17.1 \
   --build-arg CLAUDE_CODE_VERSION=2.1.0 \
-  -t ghcr.io/laminair/cooperbench-vastai:0.0.22 .
+  -t ghcr.io/laminair/cooperbench-vastai:0.0.23 .
 ```
 
 If vLLM does not yet publish a cu132 wheel, edit `Dockerfile.vastai` to
@@ -131,7 +131,7 @@ docker run -d --name cooperbench \
     --gpus all \
     --restart unless-stopped \
     --entrypoint bash \
-    ghcr.io/laminair/cooperbench-vastai:0.0.22 \
+    ghcr.io/laminair/cooperbench-vastai:0.0.23 \
     -c 'sleep infinity'
 ```
 
@@ -153,13 +153,25 @@ bash scripts/setup_vastai.sh
 1. Verifies the docker socket is mounted and the NVIDIA driver + toolkit work.
 2. Pulls our own image (so `cb-vllm` can be re-launched as a copy).
 3. Starts `cb-redis` (Redis 7, host network, port 6379).
-4. Starts `cb-vllm` (vLLM serving the 27B AWQ model, host network, `--gpus all`, port 8000).
-5. Waits for vLLM to respond at `http://localhost:8000/v1/models` — up to
-   **15 minutes** on the very first boot, because the 27B AWQ model has
-   to download from HuggingFace (5–10 min on a transpacific link from
-   Vast.ai Japan) before vLLM can load it.  Subsequent boots are cached
-   on the `vllm-cache` Docker volume and finish in under a minute.
-6. Pre-pulls the `akhatua/cooperbench-*` task images for `flash_25`.
+4. **Pre-downloads the vLLM model** into the `vllm-cache` Docker
+   volume using `huggingface_hub` + `hf_transfer` (8 parallel
+   connections).  vllm's own single-connection downloader can take
+   30+ min on a transpacific link from Vast.ai Japan to HF Hub with
+   no progress; hf_transfer typically finishes the same download in
+   5–10 min and shows progress.  Skipped if the model is already
+   cached.
+5. Starts `cb-vllm` (vLLM serving the 27B AWQ model, host network, `--gpus all`, port 8000).
+6. Waits for vLLM to respond at `http://localhost:8000/v1/models` —
+   the model is already in `vllm-cache` so vllm skips its own
+   download and just loads weights + warms CUDA.  Typically <2 min.
+   (If you bypass the pre-download and let vllm do it, the wait is
+   up to **15 minutes**.)
+7. Pre-pulls the `akhatua/cooperbench-*` task images for `flash_25`.
+
+> **Re-running just the pre-download** (e.g. on a different model or
+> to retry after a network blip): from the VM host, run
+> `bash scripts/prewarm_vllm_model.sh`.  It's safe to re-run;
+> `huggingface_hub` skips already-downloaded files.
 
 Then a one-time prep:
 
@@ -291,7 +303,7 @@ VLLM_MAX_MODEL_LEN=32768 VLLM_GPU_MEMORY_UTILIZATION=0.85 \
 docker run -d --name cb-vllm --network host --gpus all --restart unless-stopped \
     -e VLLM_MAX_MODEL_LEN=32768 -e VLLM_GPU_MEMORY_UTILIZATION=0.85 \
     -v vllm-cache:/root/.cache/huggingface \
-    ghcr.io/laminair/cooperbench-vastai:0.0.22 \
+    ghcr.io/laminair/cooperbench-vastai:0.0.23 \
     bash -c "source /etc/profile.d/claude.sh && /opt/cooperbench/scripts/serve_vllm.sh --bg"
 ```
 
@@ -319,7 +331,7 @@ Either stop the conflicting process (`lsof -i :8000`) or run
 docker rm -f cb-vllm
 VLLM_PORT=8001 docker run -d --name cb-vllm --network host --gpus all \
     -e VLLM_PORT=8001 -v vllm-cache:/root/.cache/huggingface \
-    ghcr.io/laminair/cooperbench-vastai:0.0.22 \
+    ghcr.io/laminair/cooperbench-vastai:0.0.23 \
     bash -c "source /etc/profile.d/claude.sh && /opt/cooperbench/scripts/serve_vllm.sh --bg"
 
 # And point cooperbench at the new port

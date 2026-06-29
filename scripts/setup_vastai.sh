@@ -26,7 +26,7 @@
 # Idempotent — safe to re-run.  Each step no-ops if the resource already exists.
 #
 # Environment overrides:
-#   IMAGE_TAG                 — Docker image to run (default: ghcr.io/laminair/cooperbench-vastai:0.0.22)
+#   IMAGE_TAG                 — Docker image to run (default: ghcr.io/laminair/cooperbench-vastai:0.0.23)
 #   VLLM_MODEL                — vllm model id (default: cyankiwi/Qwen3.6-27B-AWQ-INT4)
 #   VLLM_PORT                 — vllm port (default: 8000)
 #   VLLM_MAX_MODEL_LEN        — context size (default: 65536)
@@ -42,7 +42,7 @@ warn()   { echo -e "${YELLOW}[setup]${NC} $(date '+%H:%M:%S') $*"; }
 err()    { echo -e "${RED}[setup]${NC} $(date '+%H:%M:%S') $*"; }
 header() { echo -e "\n${CYAN}━━━ $* ━━━${NC}\n"; }
 
-IMAGE_TAG="${IMAGE_TAG:-ghcr.io/laminair/cooperbench-vastai:0.0.22}"
+IMAGE_TAG="${IMAGE_TAG:-ghcr.io/laminair/cooperbench-vastai:0.0.23}"
 VLLM_MODEL="${VLLM_MODEL:-cyankiwi/Qwen3.6-27B-AWQ-INT4}"
 VLLM_PORT="${VLLM_PORT:-8000}"
 VLLM_MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-65536}"
@@ -147,6 +147,70 @@ if ! docker exec cb-redis redis-cli -p 6379 ping 2>/dev/null | grep -q PONG; the
     err "cb-redis did not become ready in 30s"
     docker logs cb-redis 2>&1 | tail -20
     exit 1
+fi
+
+# ── Step 3.5: pre-download model into the vllm-cache volume ─────────
+# vllm serve downloads the model on first launch.  On a slow
+# transpacific link from Vast.ai Japan to huggingface.co, that takes
+# 30+ min with no progress and no way to parallelize.  Pre-download
+# here using huggingface_hub + hf_transfer (8 parallel connections)
+# into the same vllm-cache volume cb-vllm reads from, so vllm
+# startup is nearly instant.
+
+# Make sure the volume exists (cb-vllm will create it on first run,
+# but we need it now for the pre-download).
+docker volume create vllm-cache &>/dev/null || true
+
+# Is the model already in the cache?  Look for the safetensors index
+# that huggingface_hub writes when a snapshot is complete.
+CACHE_HIT=$(docker run --rm \
+    -v vllm-cache:/root/.cache/huggingface \
+    -e "HF_HOME=/root/.cache/huggingface" \
+    "$IMAGE_TAG" \
+    bash -c "ls /root/.cache/huggingface/hub/models--*/snapshots/*/model.safetensors.index.json 2>/dev/null | head -1" 2>/dev/null || true)
+
+if [ -n "$CACHE_HIT" ]; then
+    log "model already in vllm-cache ($CACHE_HIT) — skipping pre-download"
+else
+    header "Pre-downloading model ($VLLM_MODEL) into vllm-cache"
+    log "Using hf_transfer (8 parallel connections) — much faster than"
+    log "vllm's default single-connection downloader."
+    if [ -n "${HF_TOKEN:-}" ]; then
+        HF_TOKEN_ARGS=(-e "HF_TOKEN=$HF_TOKEN")
+        log "Using HF_TOKEN from environment"
+    else
+        HF_TOKEN_ARGS=()
+    fi
+    if ! docker run --rm \
+        -v vllm-cache:/root/.cache/huggingface \
+        -e "HF_HOME=/root/.cache/huggingface" \
+        -e "HF_HUB_ENABLE_HF_TRANSFER=1" \
+        "${HF_TOKEN_ARGS[@]}" \
+        "$IMAGE_TAG" \
+        python3 - <<'PYEOF'
+import os, subprocess, sys
+os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
+try:
+    import hf_transfer  # noqa: F401
+except ImportError:
+    print("Installing hf_transfer...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "hf_transfer"])
+    import hf_transfer  # noqa: F401
+from huggingface_hub import snapshot_download
+import time
+t0 = time.time()
+path = snapshot_download(
+    repo_id=os.environ["VLLM_MODEL"],
+    cache_dir=os.path.join(os.environ["HF_HOME"], "hub"),
+    max_workers=8,
+)
+print(f"pre-download complete in {(time.time()-t0)/60:.1f} min: {path}")
+PYEOF
+    then
+        err "model pre-download failed — see output above"
+        err "If the model is gated, set HF_TOKEN=… and re-run."
+        exit 1
+    fi
 fi
 
 # ── Step 4: vLLM sidecar ─────────────────────────────────────────────

@@ -24,8 +24,8 @@
 #   * Build time drops from ~20 min (vllm pip install) to <2 min.
 #
 # Build & push:
-#   docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.22 .
-#   docker push   ghcr.io/laminair/cooperbench-vastai:0.0.22
+#   docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.23 .
+#   docker push   ghcr.io/laminair/cooperbench-vastai:0.0.23
 
 FROM docker.io/vllm/vllm-openai:v0.23.0
 
