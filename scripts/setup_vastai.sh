@@ -176,18 +176,39 @@ else
 fi
 
 # ── Step 5: wait for vLLM ────────────────────────────────────────────
+# 15 min covers cold first boot of a 27B model: model download from
+# HF Hub on a transpacific link alone can take 5–10 min, then vLLM
+# weight load + CUDA init is another 30–60s.
 
 header "Waiting for vLLM (model: $VLLM_MODEL)"
 
-for i in $(seq 1 180); do
+for i in $(seq 1 450); do
     if curl -s "http://127.0.0.1:${VLLM_PORT}/v1/models" >/dev/null 2>&1; then
         log "vllm ready after $((i * 2))s"
         break
     fi
-    if [ "$i" -eq 180 ]; then
-        err "vllm did not become ready in 6 minutes"
-        err "tail of /tmp/vllm-${VLLM_PORT}.log from inside the container:"
-        docker exec cb-vllm tail -40 "/tmp/vllm-${VLLM_PORT}.log" 2>/dev/null || true
+    if [ "$i" -eq 450 ]; then
+        err "vllm did not become ready in 15 minutes"
+        err ""
+        err "Container state:"
+        docker inspect cb-vllm --format '  status={{.State.Status}} exit={{.State.ExitCode}} error="{{.State.Error}}"' 2>/dev/null || true
+        err ""
+        err "Docker logs (cb-vllm):"
+        docker logs cb-vllm 2>&1 | tail -60 || true
+        err ""
+        err "Log file inside cb-vllm (if container is still running):"
+        docker exec cb-vllm ls -la "/tmp/vllm-${VLLM_PORT}.log" 2>/dev/null \
+            && docker exec cb-vllm tail -60 "/tmp/vllm-${VLLM_PORT}.log" 2>/dev/null \
+            || err "  (could not exec into cb-vllm — see 'docker logs cb-vllm' above)"
+        err ""
+        err "If this was a cold first boot, the failure is almost certainly"
+        err "an incomplete model download.  Re-run 'bash scripts/setup_vastai.sh'"
+        err "(it will resume from the cached partial download) or pre-download"
+        err "the model with:"
+        err "  docker exec cooperbench python -c \\"
+        err "      'from huggingface_hub import snapshot_download; snapshot_download(\"$VLLM_MODEL\")'"
+        err ""
+        err "Full diagnostics: bash scripts/diagnose_vastai.sh"
         exit 1
     fi
     sleep 2

@@ -148,7 +148,12 @@ if $BG_MODE; then
     VLLM_PID=$!
     echo "$VLLM_PID" > "/tmp/vllm-${VLLM_PORT}.pid"
 
-    for i in $(seq 1 90); do
+    # Inner wait — just a convenience early-exit if vllm is up.  The
+    # outer setup_vastai.sh has the authoritative 15-min wait and the
+    # real diagnostic output.  We deliberately do NOT exit on inner
+    # timeout: the cb-vllm container must stay up so the outer script
+    # can read /tmp/vllm-*.log via 'docker exec cb-vllm tail ...'.
+    for i in $(seq 1 300); do
         if curl -s "http://127.0.0.1:${VLLM_PORT}/v1/models" >/dev/null 2>&1; then
             log "vllm ready (pid=$VLLM_PID, port=$VLLM_PORT)"
             log "  logs:    /tmp/vllm-${VLLM_PORT}.log"
@@ -158,9 +163,14 @@ if $BG_MODE; then
         fi
         sleep 2
     done
-    err "vllm failed to start within 180s — see /tmp/vllm-${VLLM_PORT}.log"
-    tail -40 "/tmp/vllm-${VLLM_PORT}.log" 2>/dev/null || true
-    exit 1
+    warn "vllm still not ready after 10 min — leaving container up so the"
+    warn "outer setup_vastai.sh can collect diagnostics.  See"
+    warn "/tmp/vllm-${VLLM_PORT}.log inside the cb-vllm container."
+    # Stay alive (but not via exec — vllm is already backgrounded via
+    # nohup, so this shell can exit and the container will keep running
+    # as long as vllm is alive).  Exit 0 with a note.
+    log "exiting bg launcher; vllm pid=$VLLM_PID continues in the background"
+    exit 0
 else
     log "starting vllm in foreground (Ctrl+C to stop)..."
     exec "${CMD[@]}"

@@ -154,7 +154,11 @@ bash scripts/setup_vastai.sh
 2. Pulls our own image (so `cb-vllm` can be re-launched as a copy).
 3. Starts `cb-redis` (Redis 7, host network, port 6379).
 4. Starts `cb-vllm` (vLLM serving the 27B AWQ model, host network, `--gpus all`, port 8000).
-5. Waits for vLLM to respond at `http://localhost:8000/v1/models` (up to 6 minutes — first boot also downloads the model).
+5. Waits for vLLM to respond at `http://localhost:8000/v1/models` — up to
+   **15 minutes** on the very first boot, because the 27B AWQ model has
+   to download from HuggingFace (5–10 min on a transpacific link from
+   Vast.ai Japan) before vLLM can load it.  Subsequent boots are cached
+   on the `vllm-cache` Docker volume and finish in under a minute.
 6. Pre-pulls the `akhatua/cooperbench-*` task images for `flash_25`.
 
 Then a one-time prep:
@@ -337,6 +341,10 @@ weights.  Removing it forces a re-download on the next vLLM start.
 
 ```bash
 docker logs -f cb-vllm          # vllm stdout/stderr
+
+# Or run the all-in-one diagnostic collector (container state + log tail +
+# GPU info + HF cache size + endpoint check):
+bash scripts/diagnose_vastai.sh
 docker logs -f cb-redis         # redis stdout/stderr
 nvidia-smi                      # GPU utilization
 ls -la /var/run/docker.sock     # verify socket mount
