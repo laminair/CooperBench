@@ -41,8 +41,8 @@ pushed to GitHub Container Registry (ghcr.io):
 
 ```bash
 # From the repo root.
-docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.24 .
-docker push  ghcr.io/laminair/cooperbench-vastai:0.0.24
+docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.25 .
+docker push  ghcr.io/laminair/cooperbench-vastai:0.0.25
 ```
 
 The default baked-in model is `cyankiwi/Qwen3.6-27B-AWQ-INT4`
@@ -54,7 +54,7 @@ at build time:
 docker build -f Dockerfile.vastai \
   --build-arg VLLM_VERSION=0.17.1 \
   --build-arg CLAUDE_CODE_VERSION=2.1.0 \
-  -t ghcr.io/laminair/cooperbench-vastai:0.0.24 .
+  -t ghcr.io/laminair/cooperbench-vastai:0.0.25 .
 ```
 
 If vLLM does not yet publish a cu132 wheel, edit `Dockerfile.vastai` to
@@ -131,7 +131,7 @@ docker run -d --name cooperbench \
     --gpus all \
     --restart unless-stopped \
     --entrypoint bash \
-    ghcr.io/laminair/cooperbench-vastai:0.0.24 \
+    ghcr.io/laminair/cooperbench-vastai:0.0.25 \
     -c 'sleep infinity'
 ```
 
@@ -311,10 +311,11 @@ Override via env vars in the `cb-vllm` run:
 docker rm -f cb-vllm
 VLLM_MAX_MODEL_LEN=32768 VLLM_GPU_MEMORY_UTILIZATION=0.85 \
 docker run -d --name cb-vllm --network host --gpus all --restart unless-stopped \
+    --entrypoint bash \
     -e VLLM_MAX_MODEL_LEN=32768 -e VLLM_GPU_MEMORY_UTILIZATION=0.85 \
     -v vllm-cache:/root/.cache/huggingface \
-    ghcr.io/laminair/cooperbench-vastai:0.0.24 \
-    bash -c "source /etc/profile.d/claude.sh && /opt/cooperbench/scripts/serve_vllm.sh --bg"
+    ghcr.io/laminair/cooperbench-vastai:0.0.25 \
+    -c "source /etc/profile.d/claude.sh && /opt/cooperbench/scripts/serve_vllm.sh --bg"
 ```
 
 ### `host.docker.internal` not resolving inside agent containers
@@ -340,9 +341,10 @@ Either stop the conflicting process (`lsof -i :8000`) or run
 ```bash
 docker rm -f cb-vllm
 VLLM_PORT=8001 docker run -d --name cb-vllm --network host --gpus all \
+    --entrypoint bash \
     -e VLLM_PORT=8001 -v vllm-cache:/root/.cache/huggingface \
-    ghcr.io/laminair/cooperbench-vastai:0.0.24 \
-    bash -c "source /etc/profile.d/claude.sh && /opt/cooperbench/scripts/serve_vllm.sh --bg"
+    ghcr.io/laminair/cooperbench-vastai:0.0.25 \
+    -c "source /etc/profile.d/claude.sh && /opt/cooperbench/scripts/serve_vllm.sh --bg"
 
 # And point cooperbench at the new port
 bash scripts/launch_vastai_benchmark.sh --base-url http://host.docker.internal:8001

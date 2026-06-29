@@ -21,7 +21,7 @@
 #
 #   # Or override the model / image tag:
 #   VLLM_MODEL=cyankiwi/Qwen3.6-27B-AWQ-INT4 \
-#   IMAGE_TAG=ghcr.io/laminair/cooperbench-vastai:0.0.24 \
+#   IMAGE_TAG=ghcr.io/laminair/cooperbench-vastai:0.0.25 \
 #   bash prewarm_vllm_model.sh
 #
 #   # Set HF_TOKEN if the model is gated:
@@ -33,7 +33,7 @@
 set -euo pipefail
 
 VLLM_MODEL="${VLLM_MODEL:-cyankiwi/Qwen3.6-27B-AWQ-INT4}"
-IMAGE_TAG="${IMAGE_TAG:-ghcr.io/laminair/cooperbench-vastai:0.0.24}"
+IMAGE_TAG="${IMAGE_TAG:-ghcr.io/laminair/cooperbench-vastai:0.0.25}"
 
 if ! command -v docker &>/dev/null; then
     echo "docker CLI not found — run this on the VM host, not inside a container" >&2
