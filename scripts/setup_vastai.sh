@@ -19,7 +19,7 @@
 # Idempotent — safe to re-run.  Each step no-ops if the resource already exists.
 #
 # Environment overrides:
-#   IMAGE_TAG                 — Docker image to run (default: ghcr.io/laminair/cooperbench-vastai:latest)
+#   IMAGE_TAG                 — Docker image to run (default: ghcr.io/laminair/cooperbench-vastai:0.0.20)
 #   VLLM_MODEL                — vllm model id (default: cyankiwi/Qwen3.6-27B-AWQ-INT4)
 #   VLLM_PORT                 — vllm port (default: 8000)
 #   VLLM_MAX_MODEL_LEN        — context size (default: 65536)
@@ -35,7 +35,7 @@ warn()   { echo -e "${YELLOW}[setup]${NC} $(date '+%H:%M:%S') $*"; }
 err()    { echo -e "${RED}[setup]${NC} $(date '+%H:%M:%S') $*"; }
 header() { echo -e "\n${CYAN}━━━ $* ━━━${NC}\n"; }
 
-IMAGE_TAG="${IMAGE_TAG:-ghcr.io/laminair/cooperbench-vastai:latest}"
+IMAGE_TAG="${IMAGE_TAG:-ghcr.io/laminair/cooperbench-vastai:0.0.20}"
 VLLM_MODEL="${VLLM_MODEL:-cyankiwi/Qwen3.6-27B-AWQ-INT4}"
 VLLM_PORT="${VLLM_PORT:-8000}"
 VLLM_MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-65536}"
@@ -94,7 +94,12 @@ header "Ensuring CooperBench Vast.ai image is present"
 
 if ! docker image inspect "$IMAGE_TAG" &>/dev/null; then
     log "pulling $IMAGE_TAG ..."
-    docker pull "$IMAGE_TAG"
+    if ! docker pull "$IMAGE_TAG"; then
+        err "failed to pull $IMAGE_TAG"
+        err "  - is the tag published on ghcr.io/laminair/cooperbench-vastai?"
+        err "  - override with IMAGE_TAG=ghcr.io/laminair/<other>:<tag> $0"
+        exit 1
+    fi
 else
     log "$IMAGE_TAG already local, skipping pull"
 fi
