@@ -41,8 +41,8 @@ pushed to GitHub Container Registry (ghcr.io):
 
 ```bash
 # From the repo root.
-docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.21 .
-docker push  ghcr.io/laminair/cooperbench-vastai:0.0.21
+docker build -f Dockerfile.vastai -t ghcr.io/laminair/cooperbench-vastai:0.0.22 .
+docker push  ghcr.io/laminair/cooperbench-vastai:0.0.22
 ```
 
 The default baked-in model is `cyankiwi/Qwen3.6-27B-AWQ-INT4`
@@ -54,7 +54,7 @@ at build time:
 docker build -f Dockerfile.vastai \
   --build-arg VLLM_VERSION=0.17.1 \
   --build-arg CLAUDE_CODE_VERSION=2.1.0 \
-  -t ghcr.io/laminair/cooperbench-vastai:0.0.21 .
+  -t ghcr.io/laminair/cooperbench-vastai:0.0.22 .
 ```
 
 If vLLM does not yet publish a cu132 wheel, edit `Dockerfile.vastai` to
@@ -131,7 +131,7 @@ docker run -d --name cooperbench \
     --gpus all \
     --restart unless-stopped \
     --entrypoint bash \
-    ghcr.io/laminair/cooperbench-vastai:0.0.21 \
+    ghcr.io/laminair/cooperbench-vastai:0.0.22 \
     -c 'sleep infinity'
 ```
 
@@ -291,7 +291,7 @@ VLLM_MAX_MODEL_LEN=32768 VLLM_GPU_MEMORY_UTILIZATION=0.85 \
 docker run -d --name cb-vllm --network host --gpus all --restart unless-stopped \
     -e VLLM_MAX_MODEL_LEN=32768 -e VLLM_GPU_MEMORY_UTILIZATION=0.85 \
     -v vllm-cache:/root/.cache/huggingface \
-    ghcr.io/laminair/cooperbench-vastai:0.0.21 \
+    ghcr.io/laminair/cooperbench-vastai:0.0.22 \
     bash -c "source /etc/profile.d/claude.sh && /opt/cooperbench/scripts/serve_vllm.sh --bg"
 ```
 
@@ -319,7 +319,7 @@ Either stop the conflicting process (`lsof -i :8000`) or run
 docker rm -f cb-vllm
 VLLM_PORT=8001 docker run -d --name cb-vllm --network host --gpus all \
     -e VLLM_PORT=8001 -v vllm-cache:/root/.cache/huggingface \
-    ghcr.io/laminair/cooperbench-vastai:0.0.21 \
+    ghcr.io/laminair/cooperbench-vastai:0.0.22 \
     bash -c "source /etc/profile.d/claude.sh && /opt/cooperbench/scripts/serve_vllm.sh --bg"
 
 # And point cooperbench at the new port
