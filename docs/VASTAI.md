@@ -76,7 +76,7 @@ pre-installed).  Search → filter → rent.
 |---|---|
 | **Template** | `Ubuntu 22.04 VM` (or any `vastai/kvm:…` template) |
 | **Disk** | ≥ 80 GB (model weights + dataset + pulled images) |
-| **GPU** | Any 24 GB+ NVIDIA; RTX PRO 6000 Blackwell recommended for the 27B model |
+| **GPU** | Any 24 GB+ NVIDIA; RTX PRO 6000 Blackwell (96 GB) or 4× RTX 5090 (128 GB) recommended for the 27B model |
 | **Extra Filters** | `vms_enabled=true` (already set by the VM templates) |
 
 When the VM reports running, get its SSH URL from the instance panel
@@ -228,11 +228,18 @@ For the AWQ 27B model (~14 GB) and a 65K context (~6 GB KV / request):
 |---|---|---|
 | RTX 4090 (24 GB) | 1 | 1 |
 | 2× RTX 4090 (48 GB) | 2 | 2 |
+| 4× RTX 5090 (128 GB) | 8 | 8 (capped) |
 | A100 40 GB | 2 | 2 |
 | A100 80 GB | 6 | 6 |
 | RTX PRO 6000 Blackwell (96 GB) | 8 | 8 |
 | 2× H100 (180 GB) | 8 | 8 |
 | 4× H100 (360 GB) | 8 | 8 (capped) |
+
+> **Multi-GPU works automatically.** `serve_vllm.sh` auto-detects the
+> GPU count and sets `--tensor-parallel-size` to match, so 4× 5090
+> shards the 27B model across all four cards with no extra config.
+> vllm 0.23.0 supports Blackwell (sm_120, RTX 5090) via its CUDA 12.9
+> base image.
 
 Override with `--concurrency N` or `COOPERBENCH_CONCURRENCY=N`.  For
 128K context, divide by 2 (KV cache doubles per request).
